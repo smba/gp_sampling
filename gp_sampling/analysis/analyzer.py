@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from __future__ import division, print_function
+from .change_points import detect_cusum, pettitt_test
+from .trends import mkt
 
 import sys
 
