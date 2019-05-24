@@ -9,6 +9,7 @@ import ruptures as rpt
 import scipy.signal as sig
 import sklearn.preprocessing as preprocessing
 
+
 class IterativeLearner(ABC):
     '''
     An iterative learner pursues a cycle of training, validation, and data acquisition. Different variants can be are
@@ -50,7 +51,10 @@ class IterativeLearner(ABC):
         '''
         return self.scaler.inverse_transform(ys)
         
-    def train(self) -> None:
+    def _train(self) -> None:
+        '''
+        
+        '''
         xs = self.xs[self.training_set] * 1.0
         self.model = gpflow.models.GPR(
                 xs, self.ys[self.training_set],
@@ -61,11 +65,16 @@ class IterativeLearner(ABC):
 
     
     def iterative_train(self, max_iter: int = 200):
+        '''
+        Train, acquire next, and repeat. This is the main training method for the IterativeLearner.
+        
+        :param max_iter: Maximum number of iterations, i.e., observations to include in the training set.
+        '''
         self.train()
         counter = 0
         while not counter > max_iter:
             self.acquire_next()
-            self.train()
+            self._train()
             counter += 1
         
     @abstractmethod
@@ -73,74 +82,23 @@ class IterativeLearner(ABC):
         ...
         
     def predict(self) -> Tuple[float, float]:
+        '''
+        Calculate an estimate and return mean and variance
+        
+        @return:  tuple (mean, variance) of the GP estimate
+        '''
         means, variance = self.model.predict_y(self.xs)
         means = self._transform_inverse(means)
-        variance = self._transform_inverse(variance)      
+        variance = self._transform_inverse(variance)   
+           
         return means, variance
-    
-    """
-    def change_point_estimation(self, cps: Sequence[int], n = 5):
-        mean, variance = self.predict()
-        
-        algo = rpt.Window(width=30, model="l2").fit(mean )
-        cp_estimation = algo.predict(pen=10)
-
-        tps = []
-        fps = []
-        fng = []
-        for ce in cp_estimation:
-            matching = [c in range(ce - n, ce + n) for c in cps]
-            if any(matching):
-                tps.append(ce)
-            else:
-                fps.append(ce)
-        
-        for cp in cps:
-            matching = [cp in range(ce - n, ce + n) for ce in cp_estimation]
-            if not any(matching):
-                fng.append(cp)
-        
-        if (len(tps) + len(fps)) == 0:
-            precision = 1.0
-        else:
-            precision = len(tps)/(len(tps) + len(fps))
-        
-        if (len(tps) + len(fng)) == 0:
-            recall = 1.0
-        else:
-            recall = len(tps)/(len(tps) + len(fng))
-        
-        
-        
-        ys = self._transform_inverse(self.ys)
-        
-        fig, ax1 = plt.subplots(figsize=(13,6))
-        ax1.plot(self.xs, ys, color="black", label="ground truth", linewidth=0.8)
-        ax1.plot(self.xs, mean, label="GP estimate", color="blue")
-        #plt.plot(self.xs, pd.DataFrame(mean).rolling(window=30, center =True).median(), label="GP estimation (median)", color="dodgerblue")
-        mean = mean.reshape(1, -1)[0]
-        variance = variance.reshape(1, -1)[0]
-        ax1.fill_between(self.xs.reshape(1, -1)[0], mean - variance, mean + variance, alpha=0.25, color="blue", label="GP estimate uncertainty")
-        #plt.scatter(self.training_set, ys[self.training_set], marker=".", s=120, color="blue", label="observations")
-        ax1.set_ylabel("performance")
-        ax1.scatter(self.training_set, ys[self.training_set], color="blue")
-        plt.xlabel("time (revisions)")
-        
-        ax1.scatter(cps, self._transform_inverse(self.ys[cps]), label="ground truth CPs", color="black", marker="x")
-        for cp in cp_estimation:
-            ax1.axvspan(cp - n, cp + n, alpha=0.5, color='dodgerblue')
-
-        diff = np.diff(mean, n=1)
-        #print(diff)
-        ht = 0.045
-        peaks = sig.find_peaks(np.abs(diff), height=ht)[0]
-        #print(np.min(diff), np.max(diff))
-        ax1.legend()
-        #print(mape(ys.reshape(1, -1)[0], mean))
-        plt.show()
-    """ 
        
 class IterativeRandomLearner(IterativeLearner):
+    '''
+    The IterativeRandomLearner adds random sampling to the IterativeLearner by implementing 
+    the acquire_next method accordingly. The acquisition function selects an arbitrary 
+    data point and adds this to the training set.
+    '''
     def __init__(self, 
                  xs: np.ndarray, 
                  ys: np.ndarray, 
@@ -149,12 +107,20 @@ class IterativeRandomLearner(IterativeLearner):
         super.__init__(self, xs, ys, kernel, init_training)
                   
     def acquire_next(self) -> None:
+        '''
+        This acquisition function adds an arbitrary data point to the training set.
+        '''
         not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
         next = [np.random.choice(not_training)]
         self.training_set = np.append(self.training_set, next)
         
 class ActiveLearner(IterativeLearner):
+    '''
+    The ActiveLearner adds active uncertainty-guided sampling to the IterativeLearner by
+    implementing the acquire_next method accordingly. The acquisition function selects the 
+    data point with the largest uncertainty/smallest confidence and adds this to the training set.
+    '''
     def __init__(self, 
                  xs: np.ndarray, 
                  ys: np.ndarray, 
@@ -163,6 +129,9 @@ class ActiveLearner(IterativeLearner):
         super.__init__(self, xs, ys, kernel, init_training)
                   
     def acquire_next(self) -> None:
+        '''
+        This acquisition function adds the data point with the highest uncertainty to the training set.
+        '''
         mean, std = self.predict()
         not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
@@ -170,16 +139,30 @@ class ActiveLearner(IterativeLearner):
         nxt = [np.argmax(std)]
         self.training_set = np.append(self.training_set, nxt)
    
-class ActiveBalancedLearner(IterativeLearner):
+class BalancedActiveLearner(IterativeLearner):
+    '''
+    The BalancedActiveLearner, unlike the ActiveLearner does not only query new data points to explore, 
+    but excludes data points from the training set if the training set size exceeds a balance limit. This 
+    is to limit the training effort and extract data points contributing best to the GP estimate.
+    '''
     def __init__(self, 
                  xs: np.ndarray, 
                  ys: np.ndarray, 
                  kernel: gpflow.kernels.Kernel = gpflow.kernels.RBF(input_dim=1),
-                 init_training: int = 10):
+                 init_training: int = 10,
+                 balance_limit = 200):
         IterativeLearner.__init__(self, xs=xs, ys=ys, kern=kernel, init_training=init_training)
-        self.balance_limit=200
+        self.balance_limit=balance_limit
         
     def acquire_next(self) -> None:
+        '''
+        This acquisition function adds the data point with the largest uncertainty to the training set. In addition, 
+        if the size of the training set exceeds the limit specified upon instantiation, also, the data point with
+        the least uncertainty (i.e. highest confidence) from the training set is excluded.
+        
+        This is according to the original implementation of Roberts et al. (2012)
+        
+        '''
         mean, std = self.predict()
         not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
