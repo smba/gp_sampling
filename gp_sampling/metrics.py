@@ -36,3 +36,25 @@ def fuzzy_precall(cps, cp_estimation, fuzzy = 5):
         
     return precision, recall
     
+def a12(lst1,lst2,rev=True):
+    """
+    Python version of non-parametric hypothesis testing using Vargha and Delaney's A12 statistic.
+
+    Implementation borrowed from Tim Menzies at
+    https://gist.github.com/timm/5630491
+
+    :param lst1: sample of nums
+    :param lst2: sample of nums
+    :param rev:
+    :return:
+    """
+    more = same = 0.0
+    for x in lst1:
+        for y in lst2:
+            if x==y:
+                same += 1
+            elif rev and x > y:
+                more += 1
+            elif not rev and x < y:
+                more += 1
+    return (more + 0.5*same) / (len(lst1)*len(lst2))
