@@ -77,7 +77,8 @@ class IterativeLearner(ABC):
         means = self._transform_inverse(means)
         variance = self._transform_inverse(variance)      
         return means, variance
-        
+    
+    """
     def change_point_estimation(self, cps: Sequence[int], n = 5):
         mean, variance = self.predict()
         
@@ -137,7 +138,8 @@ class IterativeLearner(ABC):
         ax1.legend()
         #print(mape(ys.reshape(1, -1)[0], mean))
         plt.show()
-        
+    """ 
+       
 class IterativeRandomLearner(IterativeLearner):
     def __init__(self, 
                  xs: np.ndarray, 
