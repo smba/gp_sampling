@@ -12,7 +12,7 @@ class ChangePointAnalyzer:
     @abstractmethod
     def detect_change_points(self) -> Tuple[Sequence[int], Sequence[float]]:
         ...
-        
+     
 class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
     def __init__(self, ys: np.ndarray):
         super.__init__(self, ys)
@@ -40,6 +40,19 @@ class BottomUpChangePointAnalyzer(ChangePointAnalyzer):
         
     def detect_change_points(self) -> Tuple[Sequence[int], Sequence[float]]:
         pass # TODO
+
+def segment(signal):
+    if signal.shape[0] < 2:
+        return 0
+    found = 0
+    change_point = pettitt_test(signal)
+    if change_point[1] <= 0.05:
+        found += 1
+        found += segment(signal[:change_point[0]])
+        found += segment(signal[change_point[0]:])
+        return found
+    else:
+        return 0
 
 def pettitt_test(signal):
     signal = signal.values
