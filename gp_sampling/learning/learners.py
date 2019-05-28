@@ -1,12 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Sequence, Tuple
+from typing import Tuple
 
 import gpflow
 
-import matplotlib.pyplot as plt
 import numpy as np
-import ruptures as rpt
-import scipy.signal as sig
 import sklearn.preprocessing as preprocessing
 
 
