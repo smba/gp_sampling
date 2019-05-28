@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import numpy as np
-import ruptures
 from typing import abstractmethod, Tuple, Sequence
+
+import ruptures
+
+import numpy as np
+import pandas as pd
+import scipy.stats as stats
+
 
 class ChangePointAnalyzer:
     def __init__(self, ys: np.ndarray):
         self.ys = ys
     
     @abstractmethod
-    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Tuple[Sequence[int], Sequence[float]]:
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         ...
      
 class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
@@ -27,6 +32,7 @@ class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
         
         @param drift: drift parameter of the CUSUM algorithm
         @param threshold: threshold parameter of the CUSUM algorithm
+        :return: list of estimated change points
         '''
         
         if "drift" not in kwargs and "threshold" not in kwargs:
@@ -103,10 +109,11 @@ class WindowChangePointAnalyzer(ChangePointAnalyzer):
     def __init__(self, ys: np.ndarray):
         super.__init__(self, ys)
         
-    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Tuple[Sequence[int], Sequence[float]]:
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
         @param width: window size (default is 10)
         @param model: "l1", "rbf", "linear", "normal", "ar" (default is "l2")
+        :return: list of estimated change points
         '''
         model = kwargs["model"] if "model" in kwargs else "l2"
         width = kwargs["width"] if "width" in kwargs else 10
@@ -121,9 +128,10 @@ class BinaryChangePointAnalyzer(ChangePointAnalyzer):
     def __init__(self, ys: np.ndarray):
         super.__init__(self, ys)
         
-    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Tuple[Sequence[int], Sequence[float]]:#
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
         @param model: "l1", "rbf", "linear", "normal", "ar" (default is "l2")
+        :return: list of estimated change points
         '''
         model = kwargs["model"] if "model" in kwargs else "l2"
         estimator = ruptures.Binseg(model=model).fit(ys)
@@ -137,14 +145,92 @@ class BottomUpChangePointAnalyzer(ChangePointAnalyzer):
     def __init__(self, ys: np.ndarray):
         super.__init__(self, ys)
         
-    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Tuple[Sequence[int], Sequence[float]]:
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
         @param model: "l1", "rbf", "linear", "normal", "ar" (default is "l2")
+        :return: list of estimated change points
         '''
         model = kwargs["model"] if "model" in kwargs else "l2"
         estimator = ruptures.BottomUp(model=model).fit(ys)
         
         return estimator.predict()
+
+class ConfidenceIntervalAnalyzer(ChangePointAnalyzer):
+    '''
+    Wrapper class for change point estimation using confidence interval overlap (significance)
+    '''
+    def __init__(self, ys: np.ndarray):
+        super.__init__(self, ys)
+        
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
+        '''
+        Identifies performance anomalies as such revisions, for which performance is not contained in
+        a confidence interval (CI) specified by preceding commits.
+        The default z-score is 5, the window size is 10.
+        
+        @param window: sliding window size
+        @param z: default is 5 sigma
+        :return: list of estimated change points
+        '''
+        
+        z = kwargs["z"] if "z" in kwargs else 5
+        window = kwargs["window"] if "window" in kwargs else 10
+        ys = pd.DataFrame(ys)
+        
+        rolling = ys.rolling(window=window)
+        ci = lambda s: s[-1] <= np.mean(s[:-1]) + z * np.std(s[:-1]) and s[-1] >= np.mean(s[:-1]) - z * np.std(s[:-1])
+        sigs = rolling.apply(ci, raw=True)
+        return sigs != 1.0
+
+class SignificanceAnalyzer(ChangePointAnalyzer):
+    '''
+    Wrapper class for change point estimation using the Mann-Whitney-U significance test
+    '''
+    def __init__(self, ys: np.ndarray):
+        super.__init__(self, ys)
+        
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
+        '''
+        Identifies performance anomalies as such revisions, for which performance is [statistically] significantly
+        different compared to preceeding revisions using the Mann-Whitney-U test (Wilcoxon rank sum test).
+        
+        @param window: number of preceeding commits to compare current performance against
+        @param p: significance level, default is 0.05
+        :return: list of estimated change points
+        '''
+        p = kwargs["p"] if "p" in kwargs else 0.05
+        window = kwargs["window"] if "window" in kwargs else 10
+        ys = pd.DataFrame(ys)
+        
+        rolling = self.performance.rolling(window=window, center=True)
+        sig = lambda s: stats.mannwhitneyu(s[:int(window/2)], s[int(window/2):]).pvalue
+        sigs = rolling.apply(sig)
+        return sigs < p
+    
+class ThresholdAnalyzer(ChangePointAnalyzer):
+    '''
+    Wrapper class for change point estimation using threshold deviation.
+    '''
+    def __init__(self, ys: np.ndarray):
+        super.__init__(self, ys)
+        
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
+        '''
+        Identifies performance anomalies as such revisions, for which performance increases/decreases
+        by more than a relative threshold (default is 1%) from the preceeding revisions (default is 10).
+
+        :param window: number of preceding commits to compare current performance against
+        :param threshold: critical performance change threshold
+        :return: list of estimated change points
+        '''
+        threshold = kwargs["threshold"] if "threshold" in kwargs else 0.01
+        window = kwargs["window"] if "window" in kwargs else 10
+        ys = pd.DataFrame(ys)
+        
+        means = ys.shift(1).rolling(window=window).mean()
+        change = (ys - means) / ys
+        change = change.abs()
+        return change > threshold
 
 def segment(signal):
     if signal.shape[0] < 2:
