@@ -109,8 +109,8 @@ class IterativeRandomLearner(IterativeLearner):
         '''
         not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
-        next = [np.random.choice(not_training)]
-        self.training_set = np.append(self.training_set, next)
+        nxt = [np.random.choice(not_training)]
+        self.training_set = np.append(self.training_set, nxt)
         
 class ActiveLearner(IterativeLearner):
     '''
@@ -129,7 +129,7 @@ class ActiveLearner(IterativeLearner):
         '''
         This acquisition function adds the data point with the highest uncertainty to the training set.
         '''
-        mean, std = self.predict()
+        std = self.predict()[1]
         not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
         std[self.training_set] = 0.0
@@ -160,7 +160,7 @@ class BalancedActiveLearner(IterativeLearner):
         This is according to the original implementation of Roberts et al. (2012)
         
         '''
-        mean, std = self.predict()
+        std = self.predict()[1]
         not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
         
