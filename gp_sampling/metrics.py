@@ -13,14 +13,14 @@ def fuzzy_precall(cps, cp_estimation, fuzzy = 5):
     false_negatives = []
     
     for ce in cp_estimation:
-        matching = [c in range(ce - fuzzy, ce + fuzzy) for c in cps]
+        matching = [c in list(range(ce - fuzzy, ce + fuzzy)) for c in cps]
         if any(matching):
             true_positives.append(ce)
         else:
             false_positives.append(ce)
         
     for cp in cps:
-        matching = [cp in range(ce - fuzzy, ce + fuzzy) for ce in cp_estimation]
+        matching = [cp in list(range(ce - fuzzy, ce + fuzzy)) for ce in cp_estimation]
         if not any(matching):
             false_negatives.append(cp)
         
@@ -38,7 +38,7 @@ def fuzzy_precall(cps, cp_estimation, fuzzy = 5):
     
 def a12(lst1,lst2,rev=True):
     """
-    Python version of non-parametric hypothesis testing using Vargha and Delaney's A12 statistic.
+    Python version of non-parametrwaic hypothesis testing using Vargha and Delaney's A12 statistic.
 
     Implementation borrowed from Tim Menzies at
     https://gist.github.com/timm/5630491
