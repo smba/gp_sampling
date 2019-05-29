@@ -8,7 +8,7 @@ import ruptures
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-
+ 
 
 class ChangePointAnalyzer:
     def __init__(self, ys: np.ndarray):
@@ -107,7 +107,7 @@ class WindowChangePointAnalyzer(ChangePointAnalyzer):
     Wrapper class for non-exact, window-based change point estimation using ruptures. 
     '''
     def __init__(self, ys: np.ndarray):
-        super.__init__(self, ys)
+        ChangePointAnalyzer.__init__(self, ys)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -119,14 +119,14 @@ class WindowChangePointAnalyzer(ChangePointAnalyzer):
         width = kwargs["width"] if "width" in kwargs else 10
         
         estimator = ruptures.Window(width=width, model=model).fit(ys)
-        return estimator.predict()
+        return estimator.predict(pen=1)
 
 class BinaryChangePointAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for non-exact, binary segmentation change point estimation using ruptures. 
     '''
     def __init__(self, ys: np.ndarray):
-        super.__init__(self, ys)
+        ChangePointAnalyzer.__init__(self, ys)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -136,14 +136,14 @@ class BinaryChangePointAnalyzer(ChangePointAnalyzer):
         model = kwargs["model"] if "model" in kwargs else "l2"
         estimator = ruptures.Binseg(model=model).fit(ys)
         
-        return estimator.predict()
+        return estimator.predict(pen=3)
     
 class BottomUpChangePointAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for non-exact, bottom-up change point estimation using ruptures. 
     '''
     def __init__(self, ys: np.ndarray):
-        super.__init__(self, ys)
+        ChangePointAnalyzer.__init__(self, ys)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -153,14 +153,14 @@ class BottomUpChangePointAnalyzer(ChangePointAnalyzer):
         model = kwargs["model"] if "model" in kwargs else "l2"
         estimator = ruptures.BottomUp(model=model).fit(ys)
         
-        return estimator.predict()
+        return estimator.predict(pen=3)
 
 class ConfidenceIntervalAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for change point estimation using confidence interval overlap (significance)
     '''
     def __init__(self, ys: np.ndarray):
-        super.__init__(self, ys)
+        ChangePointAnalyzer.__init__(self, ys)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -180,6 +180,7 @@ class ConfidenceIntervalAnalyzer(ChangePointAnalyzer):
         rolling = ys.rolling(window=window)
         ci = lambda s: s[-1] <= np.mean(s[:-1]) + z * np.std(s[:-1]) and s[-1] >= np.mean(s[:-1]) - z * np.std(s[:-1])
         sigs = rolling.apply(ci, raw=True)
+        print(sigs)
         return sigs != 1.0
 
 class SignificanceAnalyzer(ChangePointAnalyzer):
@@ -187,7 +188,7 @@ class SignificanceAnalyzer(ChangePointAnalyzer):
     Wrapper class for change point estimation using the Mann-Whitney-U significance test
     '''
     def __init__(self, ys: np.ndarray):
-        super.__init__(self, ys)
+        ChangePointAnalyzer.__init__(self, ys)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -202,17 +203,17 @@ class SignificanceAnalyzer(ChangePointAnalyzer):
         window = kwargs["window"] if "window" in kwargs else 10
         ys = pd.DataFrame(ys)
         
-        rolling = self.performance.rolling(window=window, center=True)
+        rolling = ys.rolling(window=window, center=True)
         sig = lambda s: stats.mannwhitneyu(s[:int(window/2)], s[int(window/2):]).pvalue
         sigs = rolling.apply(sig)
-        return sigs < p
+        return sigs[sigs < p].dropna()
     
 class ThresholdAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for change point estimation using threshold deviation.
     '''
     def __init__(self, ys: np.ndarray):
-        super.__init__(self, ys)
+        ChangePointAnalyzer.__init__(self, ys)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
