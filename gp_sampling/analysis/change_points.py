@@ -11,8 +11,8 @@ import scipy.stats as stats
  
 
 class ChangePointAnalyzer:
-    def __init__(self, ys: np.ndarray):
-        self.ys = ys
+    def __init__(self):
+        pass
     
     @abstractmethod
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
@@ -22,10 +22,10 @@ class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for the CUSUM algorithm. 
     '''
-    def __init__(self, ys: np.ndarray):
-        super.__init__(self, ys)
+    def __init__(self):
+        ChangePointAnalyzer.__init__(self)
         
-    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Tuple[Sequence[int], Sequence[float]]:
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[float]:
         '''
         Performans change popint estimation using CUSUM. If nothing else is specified, auto-tuning 
         the the hyperparameters is used.
@@ -43,7 +43,7 @@ class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
         else:
             raise ValueError("Both parameters must either be provided or derived from auto-tuning.")
             
-        self.__cusum(ys, drift=drift, threshold=threshold)[0]
+        return self.__cusum(ys, drift=drift, threshold=threshold)[0]
     
     def __tune_parameters(self, ys: np.ndarray) -> Tuple[float, float]:
         '''
@@ -52,7 +52,9 @@ class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
         @param ys:  time-series
         @return: tuple of drift and threshold
         '''
-        pass # TODO
+        drift = 0.05 * np.abs(np.nanmax(ys) - np.nanmin(ys)) # 1% change
+        threshold = 0.001 * np.nanmean(pd.DataFrame(ys).rolling(window=int(0.05 * ys.shape[0]), center=True).std().values)
+        return drift, threshold
     
     def __cusum(self, x, threshold=1, drift=0):
         """Cumulative sum algorithm (CUSUM) to detect abrupt changes in data.
@@ -106,8 +108,8 @@ class WindowChangePointAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for non-exact, window-based change point estimation using ruptures. 
     '''
-    def __init__(self, ys: np.ndarray):
-        ChangePointAnalyzer.__init__(self, ys)
+    def __init__(self):
+        ChangePointAnalyzer.__init__(self)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -125,8 +127,8 @@ class BinaryChangePointAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for non-exact, binary segmentation change point estimation using ruptures. 
     '''
-    def __init__(self, ys: np.ndarray):
-        ChangePointAnalyzer.__init__(self, ys)
+    def __init__(self):
+        ChangePointAnalyzer.__init__(self)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -142,8 +144,8 @@ class BottomUpChangePointAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for non-exact, bottom-up change point estimation using ruptures. 
     '''
-    def __init__(self, ys: np.ndarray):
-        ChangePointAnalyzer.__init__(self, ys)
+    def __init__(self):
+        ChangePointAnalyzer.__init__(self)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -159,8 +161,8 @@ class ConfidenceIntervalAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for change point estimation using confidence interval overlap (significance)
     '''
-    def __init__(self, ys: np.ndarray):
-        ChangePointAnalyzer.__init__(self, ys)
+    def __init__(self):
+        ChangePointAnalyzer.__init__(self)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -180,15 +182,15 @@ class ConfidenceIntervalAnalyzer(ChangePointAnalyzer):
         rolling = ys.rolling(window=window)
         ci = lambda s: s[-1] <= np.mean(s[:-1]) + z * np.std(s[:-1]) and s[-1] >= np.mean(s[:-1]) - z * np.std(s[:-1])
         sigs = rolling.apply(ci, raw=True)
-        print(sigs)
+
         return sigs != 1.0
 
 class SignificanceAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for change point estimation using the Mann-Whitney-U significance test
     '''
-    def __init__(self, ys: np.ndarray):
-        ChangePointAnalyzer.__init__(self, ys)
+    def __init__(self):
+        ChangePointAnalyzer.__init__(self)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
@@ -212,8 +214,8 @@ class ThresholdAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for change point estimation using threshold deviation.
     '''
-    def __init__(self, ys: np.ndarray):
-        ChangePointAnalyzer.__init__(self, ys)
+    def __init__(self):
+        ChangePointAnalyzer.__init__(self)
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
