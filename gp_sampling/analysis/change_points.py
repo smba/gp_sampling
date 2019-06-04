@@ -25,7 +25,7 @@ class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
     def __init__(self):
         ChangePointAnalyzer.__init__(self)
         
-    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[float]:
+    def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
         Performans change popint estimation using CUSUM. If nothing else is specified, auto-tuning 
         the the hyperparameters is used.
@@ -43,7 +43,7 @@ class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
         else:
             raise ValueError("Both parameters must either be provided or derived from auto-tuning.")
             
-        return self.__cusum(ys, drift=drift, threshold=threshold)[0]
+        return list(self.__cusum(ys, drift=drift, threshold=threshold)[0])
     
     def __tune_parameters(self, ys: np.ndarray) -> Tuple[float, float]:
         '''
@@ -183,7 +183,7 @@ class ConfidenceIntervalAnalyzer(ChangePointAnalyzer):
         ci = lambda s: s[-1] <= np.mean(s[:-1]) + z * np.std(s[:-1]) and s[-1] >= np.mean(s[:-1]) - z * np.std(s[:-1])
         sigs = rolling.apply(ci, raw=True)
 
-        return sigs != 1.0
+        return list(sigs != 1.0)
 
 class SignificanceAnalyzer(ChangePointAnalyzer):
     '''
@@ -208,7 +208,7 @@ class SignificanceAnalyzer(ChangePointAnalyzer):
         rolling = ys.rolling(window=window, center=True)
         sig = lambda s: stats.mannwhitneyu(s[:int(window/2)], s[int(window/2):]).pvalue
         sigs = rolling.apply(sig)
-        return sigs[sigs < p].dropna()
+        return list(sigs[sigs < p].dropna())
     
 class ThresholdAnalyzer(ChangePointAnalyzer):
     '''
@@ -233,7 +233,7 @@ class ThresholdAnalyzer(ChangePointAnalyzer):
         means = ys.shift(1).rolling(window=window).mean()
         change = (ys - means) / ys
         change = change.abs()
-        return change > threshold
+        return list(change > threshold)
 
 def segment(signal):
     if signal.shape[0] < 2:
