@@ -1,5 +1,18 @@
-tests:
+stages:
+  - build
+  - test
+
+myJob:
+  stage: build
+  image: python:3.6
   script:
-    - pip install --upgrade pip
+    - apt-get update -q -y
+    - apt-get install -y python-pip
+    - python -V
+    - echo "hello world"
     - pip install -r requirements.txt
+
+myJob2:
+  stage: test
+  script:
     - python -m unittest discover --verbose . "test*.py"
