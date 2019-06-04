@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import unittest
 import random
-import matplotlib.pyplot as plt
-import numpy as np
-import analysis.change_points as cps
-import learning.learners
-import metrics
-import scipy.stats as stats
+import unittest
+
 import ruptures
+
+import analysis.change_points as cps
 import learning
+import learning.learners
+import matplotlib.pyplot as plt
+import metrics
+import numpy as np
+import scipy.stats as stats
+
 
 def signal():
     np.random.seed(123)
@@ -38,16 +41,57 @@ class TestCPAnalysis(unittest.TestCase):
         pass
     
     
-    def testChangePointEstimation(self):
-        s, cps = signal()
-        a = learning.learners.IterativeRandomLearner(np.arange(len(s)), s)
-        a.iterative_train(max_iter=20)
-        mean, std = a.predict()
+    def testActiveLearner(self):
+        n_steps = 10
+        s = self.signal
+        
+        a = learning.learners.ActiveLearner(np.arange(len(s)), s)
+        a.iterative_train(max_iter = n_steps)
 
-        plt.plot(np.arange(len(s)), s)
-        plt.plot(np.arange(len(s)), mean)
-        plt.show()
-         
+        self.assertTrue(
+            len(a.training_set) == n_steps + 5 + 1, 
+            "Training set size: {}, should be: {}".format(len(a.training_set), n_steps + 5 + 1)
+        )
+        
+        self.assertTrue(len(
+            a.training_set) == len(set(a.training_set)), 
+            "Training set size: {}, should be: {}".format(len(a.training_set), n_steps + 5)
+        )
+        
+    def testBalancedActiveLearner(self):
+        n_steps = 30
+        s = self.signal
+        
+        a = learning.learners.BalancedActiveLearner(np.arange(len(s)), s, balance_limit=10)
+        a.iterative_train(max_iter = n_steps)
+
+        self.assertTrue(
+            len(a.training_set) == n_steps + 5 + 1, 
+            "Training set size: {}, should be: {}".format(len(a.training_set), n_steps + 5 + 1)
+        )
+        
+        self.assertTrue(len(
+            a.training_set) == len(set(a.training_set)), 
+            "Training set size: {}, should be: {}".format(len(a.training_set), n_steps + 5)
+        )
+        
+    def testIterativeRandomLearner(self):
+        n_steps = 10
+        s = self.signal
+        
+        a = learning.learners.ActiveLearner(np.arange(len(s)), s)
+        a.iterative_train(max_iter = n_steps)
+
+        self.assertTrue(
+            len(a.training_set) == n_steps + 5 + 1, 
+            "Training set size: {}, should be: {}".format(len(a.training_set), n_steps + 5 + 1)
+        )
+        
+        self.assertTrue(len(
+            a.training_set) == len(set(a.training_set)), 
+            "Training set size: {}, should be: {}".format(len(a.training_set), n_steps + 5)
+        )
+       
     def testName(self):
         algo1 = cps.BinaryChangePointAnalyzer(self.signal)
         result = algo1.detect_change_points(self.signal)[:-1]
@@ -98,7 +142,7 @@ class TestCPAnalysis(unittest.TestCase):
 
         self.assertTrue(np.median(pre) > 0.6, "precision {} is smaller than 0.6".format(np.median(pre)))
         self.assertTrue(np.median(rec) > 0.8, "recall {} is smaller than 0.8".format(np.median(rec)))
-
+    
 if __name__ == "__main__":
     plt.style.use('ggplot')
     #import sys;sys.argv = ['', 'Test.testName']

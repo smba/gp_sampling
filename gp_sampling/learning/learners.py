@@ -21,7 +21,7 @@ class IterativeLearner(ABC):
                  xs: np.ndarray, 
                  ys: np.ndarray, 
                  kern: gpflow.kernels.Kernel = gpflow.kernels.RBF(input_dim=1),
-                 init_training: int = 10):
+                 init_training: int = 3):
         self.kernel = kern
         self.scaler = preprocessing.StandardScaler().fit(ys.reshape(-1, 1))
         self.xs = xs.reshape(-1, 1)
@@ -70,7 +70,6 @@ class IterativeLearner(ABC):
         self._train()
         counter = 0
         while not counter > max_iter:
-            print(counter)
             self.acquire_next()
             self._train()
             counter += 1
@@ -87,9 +86,12 @@ class IterativeLearner(ABC):
         '''
         means, variance = self.model.predict_y(self.xs)
         means = self._transform_inverse(means)
-        variance = self._transform_inverse(variance)   
+        variance = np.abs(self._transform_inverse(variance))
            
         return means, variance
+    
+    def _status(self):
+        print("Training set: {} elements".format(len(set(self.training_set))))
        
 class IterativeRandomLearner(IterativeLearner):
     '''
@@ -101,8 +103,8 @@ class IterativeRandomLearner(IterativeLearner):
                  xs: np.ndarray, 
                  ys: np.ndarray, 
                  kernel: gpflow.kernels.Kernel = gpflow.kernels.RBF(input_dim=1),
-                 init_training: int = 10):
-        super.__init__(self, xs, ys, kernel, init_training)
+                 init_training: int = 3):
+        IterativeLearner.__init__(self, xs, ys, kernel, init_training)
                   
     def acquire_next(self) -> None:
         '''
@@ -123,7 +125,7 @@ class ActiveLearner(IterativeLearner):
                  xs: np.ndarray, 
                  ys: np.ndarray, 
                  kernel: gpflow.kernels.Kernel = gpflow.kernels.RBF(input_dim=1),
-                 init_training: int = 10):
+                 init_training: int = 3):
         IterativeLearner.__init__(self, xs, ys, kernel, init_training)
                   
     def acquire_next(self) -> None:
@@ -147,7 +149,7 @@ class BalancedActiveLearner(IterativeLearner):
                  xs: np.ndarray, 
                  ys: np.ndarray, 
                  kernel: gpflow.kernels.Kernel = gpflow.kernels.RBF(input_dim=1),
-                 init_training: int = 10,
+                 init_training: int = 3,
                  balance_limit = 200):
         IterativeLearner.__init__(self, xs=xs, ys=ys, kern=kernel, init_training=init_training)
         self.balance_limit=balance_limit
@@ -162,15 +164,15 @@ class BalancedActiveLearner(IterativeLearner):
         
         '''
         std = self.predict()[1]
-        not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
+        not_training = list(set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set)))
         not_training = np.array(not_training)
         
         std_max = std
         std_min = std
         
-        std_max[self.training_set] = 0
+        for t in self.training_set:
+            std_max[t] = 0.0
         nxt = np.argmax(std_max)
-        print(nxt)
         
         std_min[self.training_set] = np.iinfo(np.int64(10)).max
         to_remove = np.argmin(std_min)
@@ -183,5 +185,3 @@ class BalancedActiveLearner(IterativeLearner):
             self.training_set = np.delete(self.training_set, loc)
             self.training_set = np.append(self.training_set, [nxt])
         
-        print(self.training_set)
-        self.change_point_estimation(cps=[])
