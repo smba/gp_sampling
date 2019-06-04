@@ -6,8 +6,10 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 import analysis.change_points as cps
+import learning.learners
 import metrics
 import ruptures
+import learning
 
 def signal():
     minor = [200, 270, 340, 630, 690, 880]
@@ -32,8 +34,18 @@ class TestCPAnalysis(unittest.TestCase):
 
     def tearDown(self):
         pass
+    
+    
+    def testChangePointEstimation(self):
+        s, cps = signal()
+        a = learning.learners.IterativeRandomLearner(np.arange(len(s)), s)
+        a.iterative_train(max_iter=20)
+        mean, std = a.predict()
 
-
+        plt.plot(np.arange(len(s)), s)
+        plt.plot(np.arange(len(s)), mean)
+        plt.show()
+         
     def testName(self):
         algo1 = cps.BinaryChangePointAnalyzer(self.signal)
         result = algo1.detect_change_points(self.signal)[:-1]

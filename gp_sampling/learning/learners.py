@@ -67,9 +67,10 @@ class IterativeLearner(ABC):
         
         :param max_iter: Maximum number of iterations, i.e., observations to include in the training set.
         '''
-        self.train()
+        self._train()
         counter = 0
         while not counter > max_iter:
+            print(counter)
             self.acquire_next()
             self._train()
             counter += 1
@@ -123,7 +124,7 @@ class ActiveLearner(IterativeLearner):
                  ys: np.ndarray, 
                  kernel: gpflow.kernels.Kernel = gpflow.kernels.RBF(input_dim=1),
                  init_training: int = 10):
-        super.__init__(self, xs, ys, kernel, init_training)
+        IterativeLearner.__init__(self, xs, ys, kernel, init_training)
                   
     def acquire_next(self) -> None:
         '''
