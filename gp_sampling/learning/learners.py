@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Tuple
-
+import pandas as pd
 import gpflow
-
+import logging
 import numpy as np
 import sklearn.preprocessing as preprocessing
 
@@ -139,7 +139,7 @@ class ActiveLearner(IterativeLearner):
         nxt = [np.argmax(std)]
         self.training_set = np.append(self.training_set, nxt)
    
-class BalancedActiveLearner(IterativeLearner):
+class BalancedActiveLearner(ActiveLearner):
     '''
     The BalancedActiveLearner, unlike the ActiveLearner does not only query new data points to explore, 
     but excludes data points from the training set if the training set size exceeds a balance limit. This 
@@ -151,7 +151,7 @@ class BalancedActiveLearner(IterativeLearner):
                  kernel: gpflow.kernels.Kernel = gpflow.kernels.RBF(input_dim=1),
                  init_training: int = 3,
                  balance_limit = 200):
-        IterativeLearner.__init__(self, xs=xs, ys=ys, kern=kernel, init_training=init_training)
+        ActiveLearner.__init__(self, xs=xs, ys=ys, kernel=kernel, init_training=init_training)
         self.balance_limit=balance_limit
         
     def acquire_next(self) -> None:
@@ -164,24 +164,18 @@ class BalancedActiveLearner(IterativeLearner):
         
         '''
         std = self.predict()[1]
-        not_training = list(set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set)))
+        
+        to_remove = pd.DataFrame(std).iloc[self.training_set]
+        to_remove = to_remove.idxmin().iloc[0]
+        
+        not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
+        std[self.training_set] = 0.0
+        nxt = [np.argmax(std)]
         
-        std_max = std
-        std_min = std
-        
-        for t in self.training_set:
-            std_max[t] = 0.0
-        nxt = np.argmax(std_max)
-        
-        std_min[self.training_set] = np.iinfo(np.int64(10)).max
-        to_remove = np.argmin(std_min)
-        
-        # balancing the training set
-        if self.training_set.shape[0] + 1 < self.balance_limit:
-            self.training_set = np.append(self.training_set, [nxt])
-        else:
-            loc = np.where(self.training_set, to_remove)
-            self.training_set = np.delete(self.training_set, loc)
-            self.training_set = np.append(self.training_set, [nxt])
+        if len(self.training_set) == self.balance_limit:
+            self.training_set = np.delete(self.training_set, np.where(self.training_set == to_remove))
+        self.training_set = np.append(self.training_set, nxt)
+
+            
         

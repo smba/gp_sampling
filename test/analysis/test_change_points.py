@@ -3,6 +3,7 @@
 
 import random
 import unittest
+import logging
 
 import ruptures
 
@@ -59,7 +60,7 @@ class TestCPAnalysis(unittest.TestCase):
         )
         
     def testBalancedActiveLearner(self):
-        n_steps = 30
+        n_steps = 15
         s = self.signal
         
         a = learning.learners.BalancedActiveLearner(np.arange(len(s)), s, balance_limit=10)
@@ -67,12 +68,12 @@ class TestCPAnalysis(unittest.TestCase):
 
         self.assertTrue(
             len(a.training_set) == 10, 
-            "Training set size: {}, should be: {}".format(len(a.training_set), n_steps + 5 + 1)
+            "Training set size: {}, should be: {}".format(len(a.training_set), 10)
         )
         
         self.assertTrue(len(
             a.training_set) == len(set(a.training_set)), 
-            "Training set size: {}, should be: {}".format(len(a.training_set), n_steps + 5)
+            "Training set size: {}, should be: {}".format(len(a.training_set), 10)
         )
         
     def testIterativeRandomLearner(self):
