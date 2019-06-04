@@ -2,7 +2,7 @@ stages:
   - build
   - test
 
-myJob:
+building:
   stage: build
   image: python:3.6
   script:
@@ -12,7 +12,7 @@ myJob:
     - echo "hello world"
     - pip install -r requirements.txt
 
-myJob2:
+testing:
   stage: test
   script:
     - python -m unittest discover --verbose . "test*.py"
