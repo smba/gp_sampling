@@ -8,10 +8,12 @@ import numpy as np
 import analysis.change_points as cps
 import learning.learners
 import metrics
+import scipy.stats as stats
 import ruptures
 import learning
 
 def signal():
+    np.random.seed(123)
     minor = [200, 270, 340, 630, 690, 880]
     major = [420, 750, 120]
     sig = [0]
@@ -56,16 +58,46 @@ class TestCPAnalysis(unittest.TestCase):
         result = algo1.detect_change_points(self.signal)[:-1]
         plt.scatter(result, self.signal[result]+0.2, color="blue", marker="X", s=120)
         print(metrics.fuzzy_precall(self.cps, result, fuzzy=5))
+
+    def test_BinaryChangePointAnalyzer(self):
+        algo1 = cps.BinaryChangePointAnalyzer()
+
+        sig, cpss = signal()
+        change_points = algo1.detect_change_points(sig)[:-1]
+        pre, rec = metrics.fuzzy_precall(cpss, change_points, fuzzy=5)
+
+        self.assertTrue(np.median(pre) > 0.6, "precision {} is smaller than 0.6".format(np.median(pre)))
+        self.assertTrue(np.median(rec) > 0.8, "recall {} is smaller than 0.8".format(np.median(rec)))
+
+    def test_WindowChangePointAnalyzer(self):
+        algo1 = cps.WindowChangePointAnalyzer()
         
-        algo1 = cps.BottomUpChangePointAnalyzer(self.signal)
-        result = algo1.detect_change_points(self.signal)[:-1]
-        plt.scatter(result, self.signal[result]+0.4, color="violet", marker="X", s=120)
-        print(metrics.fuzzy_precall(self.cps, result, fuzzy=5))
+        sig, cpss = signal()
+        change_points = algo1.detect_change_points(sig)[:-1]
+        pre, rec = metrics.fuzzy_precall(cpss, change_points, fuzzy=5)
+
+        self.assertTrue(np.median(pre) > 0.6, "precision {} is smaller than 0.6".format(np.median(pre)))
+        self.assertTrue(np.median(rec) > 0.8, "recall {} is smaller than 0.8".format(np.median(rec)))
         
-        plt.plot(range(len(self.signal)), self.signal)
+    def test_BottomUpChangePointAnalyzer(self):
+        algo1 = cps.BottomUpChangePointAnalyzer()
         
-        plt.show()
+        sig, cpss = signal()
+        change_points = algo1.detect_change_points(sig)[:-1]
+        pre, rec = metrics.fuzzy_precall(cpss, change_points, fuzzy=5)
+
+        self.assertTrue(np.median(pre) > 0.6, "precision {} is smaller than 0.6".format(np.median(pre)))
+        self.assertTrue(np.median(rec) > 0.8, "recall {} is smaller than 0.8".format(np.median(rec)))
+
+    def test_CUSUMChangePointAnalyzer(self):
+        algo1 = cps.CUSUMChangePointAnalyzer()
         
+        sig, cpss = signal()
+        change_points = algo1.detect_change_points(sig)[:-1]
+        pre, rec = metrics.fuzzy_precall(cpss, change_points, fuzzy=5)
+
+        self.assertTrue(np.median(pre) > 0.6, "precision {} is smaller than 0.6".format(np.median(pre)))
+        self.assertTrue(np.median(rec) > 0.8, "recall {} is smaller than 0.8".format(np.median(rec)))
 
 if __name__ == "__main__":
     plt.style.use('ggplot')
