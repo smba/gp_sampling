@@ -1,7 +1,9 @@
 from collections import Counter
+from typing import Sequence
 
 import analysis.change_points as cps
 import io_handling
+import pandas as pd
 import matplotlib.pyplot as plt
 import metrics
 import numpy as np
@@ -14,86 +16,65 @@ class ChangePointEstimation:
     ...
     """
     
-    #ernels = ["Brownian", "Matern32", "Matern52", "RatQuad", "RBF"]
+    kernels = ["Brownian", "Matern32", "Matern52", "RatQuad", "RBF"]
     
     def __init__(self, subject_system, ground_truth_path):
         self.system_name = subject_system
         self.ground_truth = io_handling.FileLoader.load_ground_truth(ground_truth_path)    
         
         
-    def cps_analysis(self):
-        col = self.ground_truth.columns[13]
-        path = "/media/stefan/053F591A314BD654/kernel/{}/{}".format(self.system_name, self.system_name)
-        means, stds = io_handling.FileLoader.load_model_series(path + "_" + col + "_Brownian_uncertainty.npz")
-        gmean = self.ground_truth[col]
-        gmean.dropna(inplace=True)  
-        gmean = gmean.values
+    def cp_analysis(self, col: int, npz_path: str, kernel: str, training_level: float = 0.01, estimator="binary"):
+        """
+        @param col: Column index of the loaded ground truth data set
+        @param kernel: kernel--- 
+        @param npz_path: Absolute path to .npz file 
+        """
+        col = self.ground_truth.columns[col]
+        means, stds = io_handling.FileLoader.load_model_series(npz_path)
         
-        # extract ground truth change points
-        change_points = []
+        # Obtain ground truth for the column
+        ground_truth_mean = self.ground_truth[col]
+        ground_truth_mean.dropna(inplace=True)  
+        ground_truth_mean = ground_truth_mean.values
         
-        a = cps.BottomUpChangePointAnalyzer()
-        change_points += a.detect_change_points(gmean)
-        #a = cps.BinaryChangePointAnalyzer()
-        #change_points +=a.detect_change_points(gmean)
-        #a = cps.WindowChangePointAnalyzer()
-        #change_points += a.detect_change_points(gmean)
-        #a = cps.SignificanceAnalyzer()
-        #change_points += a.detect_change_points(gmean)
-        ##a = cps.ConfidenceIntervalAnalyzer()
-        #change_points += a.detect_change_points(gmean)
-        #a = cps.ThresholdAnalyzer()
-        #change_points += a.detect_change_points(gmean)
+        # Obtain (sort of) ground truth change points data by applying binary segmentation to the 
+        # ground truth signal observation. 
+        a = cps.BinaryChangePointAnalyzer()
+        change_points = a.detect_change_points(ground_truth_mean)
         
-        commons = Counter(change_points)
-        commonz = list(filter(lambda k: commons[k] >= 1, commons.keys()))
-        if len(gmean) in commonz:
-            commonz = commonz[:commonz.index(len(gmean))] + commonz[commonz.index(len(gmean))+1:]
-        print(commonz)
-        
-        precision, recall, f1 = [], [], []
-        for i in range(min(means.shape[0], 100)):
-            print(i)
-            mean = means[i]
-            change_points = []
-            a = cps.BottomUpChangePointAnalyzer()
-            change_points +=a.detect_change_points(mean)
-            #a = cps.BinaryChangePointAnalyzer()
-            #change_points +=a.detect_change_points(mean)
-            #a = cps.WindowChangePointAnalyzer()
-            #change_points += a.detect_change_points(mean)
-            #a = cps.SignificanceAnalyzer()
-            #change_points += a.detect_change_points(mean)
-            #a = cps.ConfidenceIntervalAnalyzer()
-            #change_points += a.detect_change_points(mean)
-            #a = cps.ThresholdAnalyzer()
-            #change_points += a.detect_change_points(mean)
-            commons = Counter(change_points)
-            commons = list(filter(lambda k: commons[k] >= 1, commons.keys()))
-            if len(gmean) in commons:
-                commons = commons[:commons.index(len(gmean))] + commons[commons.index(len(gmean))+1:]
-            
-            p, r = metrics.fuzzy_precall(commonz, commons, fuzzy=5)
-            try:
-                f = 2 * (p*r) / (p + r)
-            except ZeroDivisionError:
-                f = 0.0
-            precision.append(p)
-            recall.append(r)
-            f1.append(f)
-        
-        plt.plot(precision, label="precision", linewidth=0.75)
-        plt.plot(recall, label="recall", linewidth=0.75)
-        plt.plot(f1, label="F1")
-        plt.title("{}".format(commonz))
-        plt.xlabel("iterations")
-        plt.ylabel("%")
-        plt.legend()
-        plt.show()
+        iteration = max(min(int(training_level * ground_truth_mean.shape[0]), means.shape[0] - 1), 1)
+        mean = means[iteration]
 
+        if estimator == "binary":
+            a = cps.BinaryChangePointAnalyzer()
+        elif estimator == "bottomup":
+            a = cps.BottomUpChangePointAnalyzer()
+            
+        cps_from_estimate = a.detect_change_points(mean)
+            
+        precision, recall = metrics.fuzzy_precall(change_points, cps_from_estimate, fuzzy=5)
         
-        
-        
+        return (col, kernel, training_level, precision, recall, estimator)
+
+    def analyze(self, path_template: str): 
+        results = []
+        for c, col in enumerate(self.ground_truth.columns):
+            for kernel in ChangePointEstimation.kernels:
+                for training_level in [0.01, 0.03, 0.05, 0.1]:
+                    try:
+                        npz_path = path_template.format(self.system_name, self.system_name, col, kernel)
+                        for estimator in ["binary", "bottomup"]:
+                            results.append( self.cp_analysis(c, npz_path, kernel, training_level, estimator) )
+                    except FileNotFoundError:
+                        print("File not found? ¯\_(ツ)_/¯: " + npz_path)
+                
+        return results
+                    
 if __name__ == "__main__":
-    cpe = ChangePointEstimation("xz", "../../resources/ground_truth/xz.csv")
-    cpe.cps_analysis()
+    cpe = ChangePointEstimation("lrzip", "../../resources/ground_truth/lrzip.csv")
+    results = cpe.analyze(path_template="/media/stefan/053F591A314BD654/kernel/{}/{}_{}_{}_uncertainty.npz")
+    results = pd.DataFrame(results)
+    results.columns = ["variant", "kernel", "training", "precision", "recall", "estimator"]
+    print(results.groupby(by = ["kernel", "training", "estimator"]).mean())
+    
+    pass
