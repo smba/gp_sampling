@@ -9,6 +9,7 @@ import metrics
 import numpy as np
 
 
+
 plt.style.use("ggplot")
 
 class ChangePointEstimation:
@@ -59,8 +60,9 @@ class ChangePointEstimation:
     def analyze(self, path_template: str): 
         results = []
         for c, col in enumerate(self.ground_truth.columns):
+            print(col)
             for kernel in ChangePointEstimation.kernels:
-                for training_level in [0.01, 0.03, 0.05, 0.1]:
+                for training_level in [0.03, 0.05]:
                     try:
                         npz_path = path_template.format(self.system_name, self.system_name, col, kernel)
                         for estimator in ["binary", "bottomup"]:
@@ -71,7 +73,7 @@ class ChangePointEstimation:
         return results
                     
 if __name__ == "__main__":
-    cpe = ChangePointEstimation("lrzip", "../../resources/ground_truth/lrzip.csv")
+    cpe = ChangePointEstimation("xz", "../../resources/ground_truth/xz.csv")
     results = cpe.analyze(path_template="/media/stefan/053F591A314BD654/kernel/{}/{}_{}_{}_uncertainty.npz")
     results = pd.DataFrame(results)
     results.columns = ["variant", "kernel", "training", "precision", "recall", "estimator"]

@@ -27,7 +27,7 @@ class CUSUMChangePointAnalyzer(ChangePointAnalyzer):
         
     def detect_change_points(self, ys: np.ndarray, **kwargs) -> Sequence[int]:
         '''
-        Performans change popint estimation using CUSUM. If nothing else is specified, auto-tuning 
+        Performans change ppoint estimation using CUSUM. If nothing else is specified, auto-tuning 
         the the hyperparameters is used.
         
         @param drift: drift parameter of the CUSUM algorithm
