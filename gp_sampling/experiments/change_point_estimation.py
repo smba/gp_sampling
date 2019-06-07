@@ -50,8 +50,16 @@ class ChangePointEstimation:
             a = cps.BinaryChangePointAnalyzer()
         elif estimator == "bottomup":
             a = cps.BottomUpChangePointAnalyzer()
+        elif estimator == "window":
+            a = cps.WindowChangePointAnalyzer()
+        elif estimator == "cusum":
+            a = cps.CUSUMChangePointAnalyzer()
             
-        cps_from_estimate = a.detect_change_points(mean)
+        try:
+            cps_from_estimate = a.detect_change_points(mean)
+            print("¯\_(ツ)_/¯")
+        except ValueError:
+            cps_from_estimate = []
             
         precision, recall = metrics.fuzzy_precall(change_points, cps_from_estimate, fuzzy=5)
         
@@ -62,18 +70,18 @@ class ChangePointEstimation:
         for c, col in enumerate(self.ground_truth.columns):
             print(col)
             for kernel in ChangePointEstimation.kernels:
-                for training_level in [0.03, 0.05]:
+                for training_level in [0.01, 0.03, 0.05]:
                     try:
                         npz_path = path_template.format(self.system_name, self.system_name, col, kernel)
-                        for estimator in ["binary", "bottomup"]:
+                        for estimator in ["cusum", "window"]:
                             results.append( self.cp_analysis(c, npz_path, kernel, training_level, estimator) )
                     except FileNotFoundError:
-                        print("File not found? ¯\_(ツ)_/¯: " + npz_path)
+                        print("¯\_(ツ)_/¯: " + npz_path)
                 
         return results
                     
 if __name__ == "__main__":
-    cpe = ChangePointEstimation("xz", "../../resources/ground_truth/xz.csv")
+    cpe = ChangePointEstimation("lrzip", "../../resources/ground_truth/lrzip.csv")
     results = cpe.analyze(path_template="/media/stefan/053F591A314BD654/kernel/{}/{}_{}_{}_uncertainty.npz")
     results = pd.DataFrame(results)
     results.columns = ["variant", "kernel", "training", "precision", "recall", "estimator"]

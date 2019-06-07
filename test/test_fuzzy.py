@@ -8,14 +8,17 @@ import analysis.change_points as cps
 import metrics
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.stats as stats
+import random
 from collections import Counter
-
+import seaborn as sns
 #plt.style.use("ggplot")
+sns.set_style("whitegrid")
 
-def signal(seed=123):
+def signal(seed=123, major = 10, minor = 5):
     np.random.seed(seed)
-    minor = np.random.choice(list(range(1000)), size=15)
-    major = np.random.choice(list(range(1000)), size=5)
+    minor = np.random.choice(list(range(1000)), size=minor)
+    major = np.random.choice(list(range(1000)), size=major)
     sig = [0]
     for i in range(999):
         s = sig[-1]
@@ -41,11 +44,11 @@ class Test(unittest.TestCase):
     def testName(self):
         p, r = [], []
         pa, pb, pc, ra, rb, rc = [],[],[],[],[],[]
-        for s in range(0, 2000):
+        for s in range(150):
             print(s)
-            self.signal, self.cp = signal(s)
+            self.signal, self.cp = signal(s, random.randrange(0,10), random.randrange(0,10))
             change_points = []
-            a = cps.BottomUpChangePointAnalyzer()
+            a = cps.CUSUMChangePointAnalyzer()
             b = cps.BinaryChangePointAnalyzer()
             c = cps.WindowChangePointAnalyzer()
             ca = a.detect_change_points(self.signal)
@@ -67,7 +70,7 @@ class Test(unittest.TestCase):
                 kek = []
                 for keyx in keys:
                     kek += cpf[keyx] * [keyx]
-                if len(kek) > 2:
+                if len(kek) > 1:
                     keks.append(int(np.median(kek)))
                     
             keks = list(dict.fromkeys(keks))
@@ -100,29 +103,40 @@ class Test(unittest.TestCase):
         fig = plt.figure()
 
         plt.subplot(2, 2, 1)
-        plt.title("Bottom-Up")
-        plt.hist(pa, alpha=0.5, edgecolor="black", linewidth=0.5, label="precision", bins=50)
-        plt.hist(ra, edgecolor="black", linewidth=0.5, label="recall", alpha=0.5, bins=50)
+        plt.title("cumulative sum")
+        sns.distplot(pa, hist=False, rug=True, label="precision (median: {})".format(round(np.mean(pa), 2)))
+        sns.distplot(ra, hist=False, rug=True, label="recall (median: {})".format(round(np.mean(ra), 2)))
         plt.xlim((0,1))
+        plt.xlabel("precision or recall")
+        plt.ylabel("frequency")
+
         
         plt.subplot(2, 2, 2)
         plt.title("Binary")
-        plt.hist(pc, edgecolor="black", linewidth=0.5, label="precision", alpha=0.5, bins=50)
-        plt.hist(rb, edgecolor="black", linewidth=0.5, label="recall", alpha=0.5, bins=50)
+        sns.distplot(pb, hist=False, rug=True, label="precision (median: {})".format(round(np.mean(pb), 2)))
+        sns.distplot(rb, hist=False, rug=True, label="recall (median: {})".format(round(np.mean(rb), 2)))
         plt.xlim((0,1))
+        plt.xlabel("precision or recall")
+        plt.ylabel("frequency")
+
         
         plt.subplot(2, 2, 3)
         plt.title("Window")
-        plt.hist(pc, edgecolor="black", linewidth=0.5, label="precision", alpha=0.5, bins=50)
-        plt.hist(rc, edgecolor="black", linewidth=0.5, label="recall", alpha=0.5, bins=50)
+        sns.distplot(pc, hist=False, rug=True, label="precision (median: {})".format(round(np.mean(pc), 2)))
+        sns.distplot(rc, hist=False, rug=True, label="recall (median: {})".format(round(np.mean(rc), 2)))
+        plt.xlabel("precision or recall")
+        plt.ylabel("frequency")
         plt.xlim((0,1))
+
         
         plt.subplot(2, 2, 4)
         plt.title("Merged")
-        plt.hist(p, edgecolor="black", linewidth=0.5, label="precision", alpha=0.5, bins=50)
-        plt.hist(r, edgecolor="black", linewidth=0.5, label="recall", alpha=0.5, bins=50)
+        sns.distplot(p, hist=False, rug=True, label="precision (median: {})".format(round(np.mean(p), 2)))
+        sns.distplot(r, hist=False, rug=True, label="recall (median: {})".format(round(np.mean(r), 2)))
         plt.xlim((0,1))
-        plt.legend()
+        plt.xlabel("precision or recall")
+        plt.ylabel("frequency")
+
         plt.show()
         
         #plt.plot(self.signal, linewidth=0.75, color="black")
