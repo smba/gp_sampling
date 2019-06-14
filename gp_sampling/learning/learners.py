@@ -61,7 +61,7 @@ class IterativeLearner(ABC):
         gpflow.train.ScipyOptimizer().minimize(self.model)
 
     
-    def iterative_train(self, max_iter: int = 200):
+    def iterative_train(self, max_iter: int = 200, serialize=False):
         '''
         Train, acquire next, and repeat. This is the main training method for the IterativeLearner.
         
@@ -69,13 +69,24 @@ class IterativeLearner(ABC):
         '''
         self._train()
         counter = 0
+        mean_array = []
+        variance_array = []
         while not counter > max_iter:
-            self.acquire_next()
+            means, variance = self.acquire_next()
             self._train()
             counter += 1
-        
+            
+            mean_array.append(means)
+            variance_array.append(variance)
+            
+        if serialize and type(serialize) == str:
+            mean_array = np.array(mean_array)
+            variance_array = np.array(variance_array)
+            
+            np.savez_compressed(serialize, means = mean_array, variances = variance_array)
+            
     @abstractmethod
-    def acquire_next(self) -> None:
+    def acquire_next(self) -> Tuple[np.array, np.array]:
         ...
         
     def predict(self) -> Tuple[float, float]:
@@ -106,14 +117,19 @@ class IterativeRandomLearner(IterativeLearner):
                  init_training: int = 3):
         IterativeLearner.__init__(self, xs, ys, kernel, init_training)
                   
-    def acquire_next(self) -> None:
+    def acquire_next(self) -> Tuple[np.array, np.array]:
         '''
         This acquisition function adds an arbitrary data point to the training set.
         '''
+        
+        means, variance = self.predict()
+        
         not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
         nxt = [np.random.choice(not_training)]
         self.training_set = np.append(self.training_set, nxt)
+        
+        return means, variance
         
 class ActiveLearner(IterativeLearner):
     '''
@@ -128,16 +144,18 @@ class ActiveLearner(IterativeLearner):
                  init_training: int = 3):
         IterativeLearner.__init__(self, xs, ys, kernel, init_training)
                   
-    def acquire_next(self) -> None:
+    def acquire_next(self) -> Tuple[np.array, np.array]:
         '''
         This acquisition function adds the data point with the highest uncertainty to the training set.
         '''
-        std = self.predict()[1]
+        means, std = self.predict()
         not_training = set(self.xs.reshape(1, -1)[0]).difference(set(self.training_set))
         not_training = np.array(not_training)
         std[self.training_set] = 0.0
         nxt = [np.argmax(std)]
         self.training_set = np.append(self.training_set, nxt)
+        
+        return means, std
    
 class BalancedActiveLearner(ActiveLearner):
     '''
@@ -154,7 +172,7 @@ class BalancedActiveLearner(ActiveLearner):
         ActiveLearner.__init__(self, xs=xs, ys=ys, kernel=kernel, init_training=init_training)
         self.balance_limit=balance_limit
         
-    def acquire_next(self) -> None:
+    def acquire_next(self) -> Tuple[np.array, np.array]:
         '''
         This acquisition function adds the data point with the largest uncertainty to the training set. In addition, 
         if the size of the training set exceeds the limit specified upon instantiation, also, the data point with
@@ -163,7 +181,7 @@ class BalancedActiveLearner(ActiveLearner):
         This is according to the original implementation of Roberts et al. (2012)
         
         '''
-        std = self.predict()[1]
+        means, std = self.predict()
         
         to_remove = pd.DataFrame(std).iloc[self.training_set]
         to_remove = to_remove.idxmin().iloc[0]
@@ -176,6 +194,8 @@ class BalancedActiveLearner(ActiveLearner):
         if len(self.training_set) == self.balance_limit:
             self.training_set = np.delete(self.training_set, np.where(self.training_set == to_remove))
         self.training_set = np.append(self.training_set, nxt)
+        
+        return means, std
 
             
         
