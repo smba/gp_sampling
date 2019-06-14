@@ -15,20 +15,17 @@ import seaborn as sns
 #plt.style.use("ggplot")
 sns.set_style("whitegrid")
 
-def signal(seed=123, major = 10, minor = 5):
+def signal(seed=123):
     np.random.seed(seed)
-    minor = np.random.choice(list(range(1000)), size=minor)
-    major = np.random.choice(list(range(1000)), size=major)
+    cps = np.random.choice(list(range(1000)), size=random.randint(3,30))
     sig = [0]
     for i in range(999):
         s = sig[-1]
-        if i in major:
-            s += 1.5 *np.random.normal(0, 3)
-        if i in minor:
-            s += 1.5 * np.random.normal(0,1)
-        s += 0.15 * np.random.normal(0, 1)
+        if i in cps:
+            s += np.random.normal(0, 3)
+        s += 0.3 * np.random.normal(0, 1)
         sig.append(s)
-    return np.array(sig), list(np.append(minor, major))
+    return np.array(sig), cps
 
 class Test(unittest.TestCase):
 
@@ -44,9 +41,9 @@ class Test(unittest.TestCase):
     def testName(self):
         p, r = [], []
         pa, pb, pc, ra, rb, rc = [],[],[],[],[],[]
-        for s in range(150):
+        for s in range(100):
             print(s)
-            self.signal, self.cp = signal(s, random.randrange(0,10), random.randrange(0,10))
+            self.signal, self.cp = signal(s)
             change_points = []
             a = cps.CUSUMChangePointAnalyzer()
             b = cps.BinaryChangePointAnalyzer()
