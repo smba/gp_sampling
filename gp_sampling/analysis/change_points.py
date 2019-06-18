@@ -274,7 +274,7 @@ def pettitt_test(signal):
         "change_point": p < 0.05, 
         "change_point_location": loc, 
         "change_point_direction": direction, 
-        "change_point_range": cp_range * 1000, 
+        "change_point_range": cp_range * 50, 
         "change_point_p": p
     }
 

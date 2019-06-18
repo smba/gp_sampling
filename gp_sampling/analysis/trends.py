@@ -54,7 +54,7 @@ def mk_test(x, alpha=0.05):
         z: normalized test statistics
     Examples
     --------
-      >>> x = np.random.rand(100)
+      >>> x = np.random.rand(5)
       >>> trend,h,p,z = mk_test(x,0.05)
     """
     n = len(x)

@@ -17,7 +17,7 @@ sns.set_style("whitegrid")
 
 def signal(seed=123):
     np.random.seed(seed)
-    cps = np.random.choice(list(range(1000)), size=random.randint(3,30))
+    cps = np.random.choice(list(range(50)), size=random.randint(3,30))
     sig = [0]
     for i in range(999):
         s = sig[-1]
@@ -41,7 +41,7 @@ class Test(unittest.TestCase):
     def testName(self):
         p, r = [], []
         pa, pb, pc, ra, rb, rc = [],[],[],[],[],[]
-        for s in range(100):
+        for s in range(5):
             print(s)
             self.signal, self.cp = signal(s)
             change_points = []

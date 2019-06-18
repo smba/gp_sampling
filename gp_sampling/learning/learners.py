@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
-import pandas as pd
-import gpflow
 import logging
+from typing import Tuple
+
+import gpflow
+
 import numpy as np
+import pandas as pd
 import sklearn.preprocessing as preprocessing
 
 
@@ -61,7 +63,7 @@ class IterativeLearner(ABC):
         gpflow.train.ScipyOptimizer().minimize(self.model)
 
     
-    def iterative_train(self, max_iter: int = 200, serialize=False):
+    def iterative_train(self, max_iter: int = 200) -> Tuple[np.array, np.array]:
         '''
         Train, acquire next, and repeat. This is the main training method for the IterativeLearner.
         
@@ -79,11 +81,10 @@ class IterativeLearner(ABC):
             mean_array.append(means)
             variance_array.append(variance)
             
-        if serialize and type(serialize) == str:
-            mean_array = np.array(mean_array)
-            variance_array = np.array(variance_array)
-            
-            np.savez_compressed(serialize, means = mean_array, variances = variance_array)
+        mean_array = np.array(mean_array)
+        variance_array = np.array(variance_array)
+        
+        return mean_array, variance_array
             
     @abstractmethod
     def acquire_next(self) -> Tuple[np.array, np.array]:
