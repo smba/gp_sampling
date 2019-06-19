@@ -11,6 +11,7 @@ from gp_sampling.learning.learners import ActiveLearner
 print("synthetic.6")
 import numpy as np
 print("synthetic.7")
+import gpflow
 
 def create_signal():
     cps = np.random.choice(list(range(1000)), size=random.randint(1, 25))
