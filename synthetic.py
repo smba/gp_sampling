@@ -1,14 +1,16 @@
+print("synthetic.1")
 import os
+print("learners.2")
 import random 
+print("learners.3")
 import sys
-
-import gpflow
-
+print("learners.4")
 from gp_sampling.learning.kernels import Brownian
+print("learners.5")
 from gp_sampling.learning.learners import ActiveLearner
-import learning.kernels as kernels
+print("learners.6")
 import numpy as np
-
+print("learners.7")
 
 def create_signal():
     cps = np.random.choice(list(range(5)), size=random.randint(1, 3))
@@ -23,10 +25,10 @@ def create_signal():
 
 
 if __name__ == "__main__":
-    i = sys.argv[1]
+    i = 34#sys.argv[1]
     signal, cps = create_signal()
     
-    MAXITER = 5
+    MAXITER = 100
     
     a = ActiveLearner(np.arange(0, 50), signal, Brownian())
     means, variance = a.iterative_train(max_iter=MAXITER)
