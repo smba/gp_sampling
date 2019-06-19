@@ -12,7 +12,7 @@ print("learners.7")
 import sklearn.preprocessing as preprocessing
 print("learners.8")
 import tensorflow as tf
-print("learners.8")
+print("learners.9")
 
 class Brownian(gpflow.kernels.Kernel):
 
@@ -28,7 +28,7 @@ class Brownian(gpflow.kernels.Kernel):
     def Kdiag(self, X):
         return self.variance * tf.reshape(X, (-1,))
 
-
+print("learners.10")
 class IterativeLearner(ABC):
     '''
     An iterative learner pursues a cycle of training, validation, and data acquisition. Different variants can be are
@@ -124,7 +124,7 @@ class IterativeLearner(ABC):
     def _status(self):
         print("Training set: {} elements".format(len(set(self.training_set))))
 
-       
+print("learners.11")
 class IterativeRandomLearner(IterativeLearner):
     '''
     The IterativeRandomLearner adds random sampling to the IterativeLearner by implementing 
@@ -153,7 +153,7 @@ class IterativeRandomLearner(IterativeLearner):
         
         return means, variance
 
-        
+print("learners.12")
 class ActiveLearner(IterativeLearner):
     '''
     The ActiveLearner adds active uncertainty-guided sampling to the IterativeLearner by
@@ -181,7 +181,7 @@ class ActiveLearner(IterativeLearner):
         
         return means, std
 
-   
+print("learners.13")
 class BalancedActiveLearner(ActiveLearner):
     '''
     The BalancedActiveLearner, unlike the ActiveLearner does not only query new data points to explore, 
@@ -223,3 +223,4 @@ class BalancedActiveLearner(ActiveLearner):
         
         return means, std
         
+print("learners.14")
