@@ -84,22 +84,14 @@ class ChangePointEstimation:
         return results
                     
 if __name__ == "__main__":
-    cpe = ChangePointEstimation("lrzip", "../../resources/ground_truth/lrzip.csv")
-    results = cpe.analyze(path_template="/home/stefan/Documents/kernel/{}/{}_{}_{}_uncertainty.npz")
-    results = pd.DataFrame(results)
-    results.columns = ["variant", "kernel", "training", "precision", "recall", "estimator"]
-    a = results.groupby(by = ["kernel", "training", "estimator"]).mean()
-    b = a
-    b = b.reset_index()
-    
-    plt.subplot(1, 2, 1)
-    sns.lineplot(data = b, x="training", y = "precision", hue="estimator", style="kernel", palette=sns.color_palette("muted", 4))
-    plt.ylim((0,1))
-    
-    plt.subplot(1, 2, 2)
-    sns.lineplot(data = b, x="training", y = "recall", hue="estimator", style="kernel", palette=sns.color_palette("muted", 4))
-    plt.ylim((0,1))
-    
-    plt.show()
-    print(a)
-    
+    for project in ["xz", "lrzip", "ultrajson", "scipy", "numpy", "pillow"]:
+        cpe = ChangePointEstimation("lrzip", "../../resources/ground_truth/{}.csv").format(project)
+        results = cpe.analyze(path_template="/home/stefan/Documents/kernel/{}/{}_{}_{}_uncertainty.npz")
+        results = pd.DataFrame(results)
+        results.columns = ["variant", "kernel", "training", "precision", "recall", "estimator"]
+        a = results.groupby(by = ["kernel", "training", "estimator"]).mean()
+        b = a
+        b = b.reset_index()
+        
+        pd.DataFrame(b).to_json("{}_change_point_estimation.json".format(project))
+        
