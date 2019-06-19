@@ -1,16 +1,16 @@
 print("synthetic.1")
 import os
-print("learners.2")
+print("synthetic.2")
 import random 
-print("learners.3")
+print("synthetic.3")
 import sys
-print("learners.4")
+print("synthetic.4")
 from gp_sampling.learning.kernels import Brownian
-print("learners.5")
+print("synthetic.5")
 from gp_sampling.learning.learners import ActiveLearner
-print("learners.6")
+print("synthetic.6")
 import numpy as np
-print("learners.7")
+print("synthetic.7")
 
 def create_signal():
     cps = np.random.choice(list(range(5)), size=random.randint(1, 3))
