@@ -7,7 +7,7 @@ import sys
 print("synthetic.4")
 from gp_sampling.learning.kernels import Brownian
 print("synthetic.5")
-from gp_sampling.learning.learners import *
+import gp_sampling.learning.learners as sps
 print("synthetic.6")
 import numpy as np
 print("synthetic.7")
