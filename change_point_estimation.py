@@ -1,7 +1,7 @@
 from collections import Counter
 from typing import Sequence
 
-import analysis.change_points as cps
+import gp_sampling.analysis.change_points as cps
 import io_handling
 import pandas as pd
 import matplotlib.pyplot as plt
