@@ -86,7 +86,7 @@ class ChangePointEstimation:
 if __name__ == "__main__":
     for project in ["xz", "lrzip", "ultrajson", "scipy", "numpy", "pillow"]:
         cpe = ChangePointEstimation("lrzip", "../../resources/ground_truth/{}.csv").format(project)
-        results = cpe.analyze(path_template="/home/stefan/Documents/kernel/{}/{}_{}_{}_uncertainty.npz")
+        results = cpe.analyze(path_template="/media/stefan/053F591A314BD654/kernel/{}/{}_{}_{}_uncertainty.npz")
         results = pd.DataFrame(results)
         results.columns = ["variant", "kernel", "training", "precision", "recall", "estimator"]
         a = results.groupby(by = ["kernel", "training", "estimator"]).mean()
