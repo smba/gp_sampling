@@ -2,14 +2,12 @@ from collections import Counter
 from typing import Sequence
 
 import gp_sampling.analysis.change_points as cps
-import io_handling
+import gp_sampling.io_handling as io_handling
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import metrics
+import gp_sampling.metrics as metrics
 import numpy as np
-
-
 
 plt.style.use("ggplot")
 
@@ -24,8 +22,7 @@ class ChangePointEstimation:
         self.system_name = subject_system
         self.ground_truth = io_handling.FileLoader.load_ground_truth(ground_truth_path)    
         
-        
-    def cp_analysis(self, col: int, npz_path: str, kernel: str, training_level: float = 0.01, estimator="binary"):
+    def cp_analysis(self, col: int, npz_path: str, kernel: str, training_level: float=0.01, estimator="binary"):
         """
         @param col: Column index of the loaded ground truth data set
         @param kernel: kernel--- 
@@ -58,7 +55,7 @@ class ChangePointEstimation:
             
         try:
             cps_from_estimate = a.detect_change_points(mean)
-            #print("¯\_(ツ)_/¯")
+            # print("¯\_(ツ)_/¯")
         except ValueError:
             cps_from_estimate = []
             
@@ -70,18 +67,19 @@ class ChangePointEstimation:
         results = []
         for c, col in enumerate(self.ground_truth.columns):
             print(col)
-            #if c > 5:
+            # if c > 5:
             #    break
             for kernel in ChangePointEstimation.kernels:
                 for training_level in [0.01, 0.02, 0.03, 0.04, 0.05]:
                     try:
                         npz_path = path_template.format(self.system_name, self.system_name, col, kernel)
                         for estimator in ["cusum", "window", "bottomup", "binary"]:
-                            results.append( self.cp_analysis(c, npz_path, kernel, training_level, estimator) )
+                            results.append(self.cp_analysis(c, npz_path, kernel, training_level, estimator))
                     except FileNotFoundError:
                         print("¯\_(ツ)_/¯: " + npz_path)
                 estimator
         return results
+
                     
 if __name__ == "__main__":
     for project in ["xz", "lrzip", "ultrajson", "scipy", "numpy", "pillow"]:
@@ -89,7 +87,7 @@ if __name__ == "__main__":
         results = cpe.analyze(path_template="/media/stefan/053F591A314BD654/kernel/{}/{}_{}_{}_uncertainty.npz")
         results = pd.DataFrame(results)
         results.columns = ["variant", "kernel", "training", "precision", "recall", "estimator"]
-        a = results.groupby(by = ["kernel", "training", "estimator"]).mean()
+        a = results.groupby(by=["kernel", "training", "estimator"]).mean()
         b = a
         b = b.reset_index()
         
