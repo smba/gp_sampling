@@ -27,7 +27,7 @@ if __name__ == "__main__":
     if not prefix.endswith("/"):
         prefix = prefix + "/"
     
-    MAXITER = 50
+    MAXITER = 100
     
     a = ActiveLearner(np.arange(0, 1000), signal, Brownian())
     means, variance = a.iterative_train(max_iter=MAXITER)
