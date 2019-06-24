@@ -55,7 +55,6 @@ class ChangePointEstimation:
             
         try:
             cps_from_estimate = a.detect_change_points(mean)
-            # print("¯\_(ツ)_/¯")
         except ValueError:
             cps_from_estimate = []
             
@@ -82,14 +81,14 @@ class ChangePointEstimation:
 
                     
 if __name__ == "__main__":
-    for project in ["xz", "lrzip", "ultrajson", "scipy", "numpy", "pillow"]:
-        cpe = ChangePointEstimation("lrzip", "resources/ground_truth/{}.csv".format(project))
+    for project in ["xz", "lrzip", "ultrajson", "pillow", " scipy", "numpy"]:
+        cpe = ChangePointEstimation(project, "resources/ground_truth/{}.csv".format(project))
         results = cpe.analyze(path_template="/media/stefan/053F591A314BD654/kernel/{}/{}_{}_{}_uncertainty.npz")
         results = pd.DataFrame(results)
         results.columns = ["variant", "kernel", "training", "precision", "recall", "estimator"]
-        a = results.groupby(by=["kernel", "training", "estimator"]).mean()
-        b = a
-        b = b.reset_index()
+        #a = results.groupby(by=["kernel", "training", "estimator"]).mean()
+        #b = a
+        #b = b.reset_index()
         
-        pd.DataFrame(b).to_json("{}_change_point_estimation.json".format(project))
+        pd.DataFrame(results).to_csv("{}_change_point_estimation.csv".format(project))
         
