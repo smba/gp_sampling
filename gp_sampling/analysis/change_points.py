@@ -8,6 +8,7 @@ import ruptures
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
+from Cython.Compiler.Nodes import PassStatNode
  
 
 class ChangePointAnalyzer:
@@ -277,4 +278,5 @@ def pettitt_test(signal):
         "change_point_range": cp_range * 50, 
         "change_point_p": p
     }
+    
 
