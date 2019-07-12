@@ -23,7 +23,7 @@ class BayesianCPE:
     """
     Bayesian changepoint estimatior using truncated Dirichlet mixture models.
     """
-    def __init__(self, ys: np.ndarray, n_components: int = 15):
+    def __init__(self, ys: np.ndarray, n_components: int = 30):
         self.model = pm.Model()
         self.ys = ys
         self._calculate_growth()
@@ -64,20 +64,17 @@ class BayesianCPE:
             
             # each mixture component has independent mean and concentration
             mu = pm.Uniform('mu', 0., 1.0 * N, shape=K)
-            #tau = pm.Gamma('tau', 1.0, 1.0, shape=K)
             tau = pm.HalfNormal('tau', 1.0, shape=K)
-            obs = pm.Normal('obs', mu[component], tau=tau[component], observed=self.selection)
             
-            #johannes' commentar
-            #obs = pm.Normal('obs', mu[component], tau=tau[component])
-            #noise = pm.HalfNormal("noiz", sd=10)
-            #meas = pm.Normal('meas', mu=obs, sd=noise, observed=self.selection )
+            mix = pm.Normal('obs', mu[component], tau=tau[component], shape=N, observed=self.selection)
+            # a = pm.Normal("s", mu=mix, sd=pm.HalfNormal("noiz", sd=10), observed=self.selection, shape=N) 
+            
             # preparing MCMC sampling steps
-            step1 = pm.Metropolis(vars=[w, mu, tau, obs])
+            step1 = pm.Metropolis(vars=[w, mu, tau, mix])
             step2 = pm.ElemwiseCategorical([component], np.arange(K))
             self.steps = [step1, step2]
                
-    def sample_posteriors(self, samples=1000, chains=2, tune=5000, retain=500):
+    def sample_posteriors(self, samples=2500, chains=2, tune=5000, retain=1000):
         with self.model as model:
             try: 
                 if retain >= samples:
@@ -108,15 +105,17 @@ class BayesianCPE:
         sns.lineplot(np.arange(self.ys.shape[0]), self.ys, linewidth=0.75, color="steelblue", label="observation", ax=nw)
         for i in range(self.n_components):
             alpha = mean_weights[i] / 2
-            nw.axvline(x=mean_centroid[i], color="teal", linewidth=0.9, alpha = alpha)
-            nw.axvspan(mean_centroid[i] - sigmas[i], mean_centroid[i] + sigmas[i], alpha=alpha, facecolor="teal")
+            nw.axvline(x=mean_centroid[i], color="crimson", linewidth=0.9, alpha = alpha)
+            nw.axvspan(mean_centroid[i] - sigmas[i], mean_centroid[i] + sigmas[i], alpha=alpha, facecolor="crimson")
         nw.set_xlim((0, self.ys.shape[0]))
         
         ne = plt.subplot(2, 2, 2)
         ne.title.set_text('AVG mixture component weight')
-        ne.set_xlabel("component")
-        ne.set_ylabel("AVG mixture component weight")
-        sns.barplot(np.arange(mean_weights.shape[0]), mean_weights, color="steelblue", ax=ne, alpha=0.5)
+        ne.set_xlabel("average mixture component weight")
+        ne.set_ylabel("mixture component")
+        #sns.barplot(np.arange(mean_weights.shape[0]), mean_weights, color="steelblue", ax=ne, alpha=0.5)
+        sns.barplot(np.arange(self.n_components), np.sort(mean_weights)[::-1], color="steelblue", ax=ne)
+
         
         sw = plt.subplot(2, 2, 3)
         sw.title.set_text('Growth')
@@ -130,14 +129,14 @@ class BayesianCPE:
         posterior = np.zeros(self.ys.shape[0])
         for i in range(self.n_components):
             ys = np.array(list(map(lambda x: norm_pdf(x, mean_centroid[i], sigmas[i]), xs)))
-            sns.lineplot(xs, mean_weights[i]* ys, linewidth=0.5, color="steelblue")
+            plt.plot(xs, mean_weights[i]* ys, linewidth=0.5, color="mediumblue", linestyle=":")
             posterior += mean_weights[i] * ys
-        sns.lineplot(xs, posterior, linewidth=0.8, color="mediumblue")
+        sns.lineplot(xs, posterior, linewidth=0.8, color="steelblue")
         
         plt.show()
                              
 signal = np.array([20 for i in range(50)] + [np.nan,np.nan,np.nan,np.nan,np.nan,np.nan] + [40 for i in range(50)] +[np.nan,np.nan,np.nan,np.nan,np.nan,np.nan] + [60 for i in range(50)])*1.0
-#signal += np.array([np.random.normal(0, 0.3) for i in range(signal.shape[0])])
+signal += np.array([np.random.normal(0, 0.2) for i in range(signal.shape[0])])
 
 a = BayesianCPE(signal)
 a.generate_priors()
