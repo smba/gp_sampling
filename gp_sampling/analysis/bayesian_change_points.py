@@ -4,6 +4,7 @@
 import logging
 
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pymc3 as pm
@@ -39,7 +40,7 @@ class BayesianCPE:
         self.growth = (self.growth / np.sum(self.growth)) 
         
         # filter step neccesary?
-        self.growth = pd.DataFrame(self.growth).rolling(window=7, center=True).mean()
+        self.growth = pd.DataFrame(self.growth).rolling(window=10, center=True).mean()
         self.growth.ffill(inplace=True)
         self.growth.bfill(inplace=True)
         self.growth = self.growth.values.reshape(1, -1)[0]
@@ -48,7 +49,7 @@ class BayesianCPE:
         # draw samples of likely change point positions
         self.selection = np.random.choice(np.arange(1, self.growth.shape[0]+1), p=self.growth, size=resample)
               
-    def generate_priors(self):
+    def generate_priors(self, mode: int = 0):
         
         # maximum number of components the mixture model / truncation point
         K = self.n_components
@@ -58,23 +59,25 @@ class BayesianCPE:
         
         with self.model:
             
-            # mixture weights are drawn from a Dirichlet distribution
-            w = pm.Dirichlet('w', np.ones(K))
-            component = pm.Categorical('component', w, shape=N)
-            
-            # each mixture component has independent mean and concentration
-            mu = pm.Uniform('mu', 0., 1.0 * N, shape=K)
-            tau = pm.HalfNormal('tau', 1.0, shape=K)
-            
-            mix = pm.Normal('obs', mu[component], tau=tau[component], shape=N, observed=self.selection)
-            # a = pm.Normal("s", mu=mix, sd=pm.HalfNormal("noiz", sd=10), observed=self.selection, shape=N) 
-            
-            # preparing MCMC sampling steps
-            step1 = pm.Metropolis(vars=[w, mu, tau, mix])
-            step2 = pm.ElemwiseCategorical([component], np.arange(K))
-            self.steps = [step1, step2]
-               
-    def sample_posteriors(self, samples=2500, chains=2, tune=5000, retain=1000):
+            # basic model with K normal distribution as mixture components
+            if mode == 0:
+                # mixture weights are drawn from a Dirichlet distribution
+                w = pm.Dirichlet('w', np.ones(K))
+                component = pm.Categorical('component', w, shape=N)
+                
+                # each mixture component has independent mean and concentration
+                alpha = pm.Uniform('alpha', 0., 1.0 * N, shape=K)
+                beta = pm.HalfCauchy('beta', 1.0, shape=K)
+                
+                mix = pm.Cauchy('obs', alpha=alpha[component], beta=beta[component], shape=N, observed=self.selection)
+                # a = pm.Normal("s", mu=mix, sd=pm.HalfNormal("noiz", sd=10), observed=self.selection, shape=N) 
+                
+                # preparing MCMC sampling steps
+                step1 = pm.Metropolis(vars=[w, alpha, beta, mix])
+                step2 = pm.ElemwiseCategorical([component], np.arange(K))
+                self.steps = [step1, step2]
+                
+    def sample_posteriors(self, samples=2500, chains=2, tune=30000, retain=1000):
         with self.model as model:
             try: 
                 if retain >= samples:
@@ -85,7 +88,7 @@ class BayesianCPE:
                 trace = pm.sample(samples, self.steps, chains=chains, tune=tune, n_init=1000)
                 
                 self.trace = dict()
-                for rv in ["mu", "tau", "w"]:
+                for rv in ["alpha", "beta", "w"]:
                     self.trace[rv] = np.array( trace[rv][- retain:] )
                 
             except ValueError as ver:
@@ -93,11 +96,13 @@ class BayesianCPE:
                 logging.error(model.check_test_point())
                 
     def visualize_model(self):
-        mean_centroid = self.trace["mu"].mean(0)
-        tau_centroids = self.trace["tau"].mean(0)
+        mean_centroid = self.trace["alpha"].mean(0)
+        tau_centroids = self.trace["beta"].mean(0)
         mean_weights = self.trace["w"].mean(0)
         sigmas = np.array(list(map(lambda t: 1/t, tau_centroids)))
         
+        confidence = pd.DataFrame({"x": np.arange(0, self.n_components), "tau":tau_centroids, "w": mean_weights})
+        confidence = confidence.sort_values(by=["w"], ascending=False)
         #fig = plt.figure()
 
         nw = plt.subplot(2, 2, 1)
@@ -113,9 +118,15 @@ class BayesianCPE:
         ne.title.set_text('AVG mixture component weight')
         ne.set_xlabel("average mixture component weight")
         ne.set_ylabel("mixture component")
-        #sns.barplot(np.arange(mean_weights.shape[0]), mean_weights, color="steelblue", ax=ne, alpha=0.5)
-        sns.barplot(np.arange(self.n_components), np.sort(mean_weights)[::-1], color="steelblue", ax=ne)
-
+        
+        # see https://stackoverflow.com/questions/39864958/define-hues-by-column-values-in-seaborn-barplot
+        sns.barplot(
+            data = confidence, 
+            x = confidence.index.values, 
+            y = "w",  
+            ax = ne, 
+            palette=mpl.cm.ScalarMappable(cmap='RdYlGn_r').to_rgba(confidence['tau'])
+        )
         
         sw = plt.subplot(2, 2, 3)
         sw.title.set_text('Growth')
