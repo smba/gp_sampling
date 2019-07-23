@@ -3,13 +3,15 @@
 
 import logging
 
-import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pymc3 as pm
 import seaborn as sns
+from sklearn.preprocessing import MinMaxScaler
 import theano.tensor as tt
+
 
 sns.set_style("whitegrid")
 
@@ -35,6 +37,10 @@ class BayesianCPE:
         # calculate linear interpolation
         growth = pd.DataFrame(self.ys).interpolate().values.ravel().reshape(1, -1)[0]
         self.growth = np.abs(np.gradient(growth))
+        
+        self.growth = MinMaxScaler().fit_transform(self.growth.reshape(-1, 1))
+        plt.plot(self.growth)
+        plt.show()
             
         # normalize so that the sum is one and smooth it
         self.growth = (self.growth / np.sum(self.growth)) 
@@ -44,7 +50,7 @@ class BayesianCPE:
         self.growth.ffill(inplace=True)
         self.growth.bfill(inplace=True)
         self.growth = self.growth.values.reshape(1, -1)[0]
-        self.growth = (self.growth / np.sum(self.growth)) 
+        #self.growth = (self.growth / np.sum(self.growth)) 
 
         # draw samples of likely change point positions
         self.selection = np.random.choice(np.arange(1, self.growth.shape[0]+1), p=self.growth, size=resample)
@@ -77,7 +83,7 @@ class BayesianCPE:
                 step2 = pm.ElemwiseCategorical([component], np.arange(K))
                 self.steps = [step1, step2]
                 
-    def sample_posteriors(self, samples=2500, chains=2, tune=30000, retain=1000):
+    def sample_posteriors(self, samples=501, chains=8, cores=2, tune=1000, retain=500):
         with self.model as model:
             try: 
                 if retain >= samples:
@@ -85,7 +91,7 @@ class BayesianCPE:
                     samples = retain + 1000
                     
                 #trace = pm.sample(samples, chains=chains, tune=tune)
-                trace = pm.sample(samples, self.steps, chains=chains, tune=tune, n_init=1000)
+                trace = pm.sample(samples, step = self.steps, chains=chains, tune=tune, n_init=1000)
                 
                 self.trace = dict()
                 for rv in ["alpha", "beta", "w"]:
@@ -133,7 +139,7 @@ class BayesianCPE:
         sns.lineplot(np.arange(self.growth.shape[0]), self.growth, linewidth=0.8, color="steelblue", label="absolute slope", ax=sw)
         
         se = plt.subplot(2, 2, 4)
-        se.title.set_text('Demposition of posterior mixture model')
+        se.title.set_text('Demposition of posterißor mixture model')
         xs = np.arange(self.ys.shape[0])
         
             
@@ -146,10 +152,19 @@ class BayesianCPE:
         
         plt.show()
                              
-signal = np.array([20 for i in range(50)] + [np.nan,np.nan,np.nan,np.nan,np.nan,np.nan] + [40 for i in range(50)] +[np.nan,np.nan,np.nan,np.nan,np.nan,np.nan] + [60 for i in range(50)])*1.0
-signal += np.array([np.random.normal(0, 0.2) for i in range(signal.shape[0])])
+#signal = np.array([20 for i in range(50)] + [np.nan,np.nan,np.nan,np.nan,np.nan,np.nan] + [40 for i in range(50)] +[np.nan,np.nan,np.nan,np.nan,np.nan,np.nan] + [60 for i in range(50)])*1.0
+#signal += np.array([np.random.normal(0, np.0.2) for i in range(signal.shape[0])])
 
-a = BayesianCPE(signal)
+signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/pillow.csv")
+signal = signal[signal.columns[5]][:]
+
+plain = np.full(signal.shape, np.nan)
+sample = np.random.choice(np.arange(signal.shape[0]), size=25)
+plain[sample] = signal[sample]
+#print(plain)
+#plt.scatter(np.arange(plain.shape[0]), plain)
+#plt.show()
+a = BayesianCPE(plain)
 a.generate_priors()
 a.sample_posteriors()
 a.visualize_model()
