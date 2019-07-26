@@ -22,7 +22,7 @@ class BayesianChangePointEstimator:
                  original: np.ndarray,
                  ):
         self.signal = signal
-        self.original = original
+        self.original = original#pd.DataFrame(original).rolling(window=50, center=True).std().values.reshape(1, -1)[0]
         
         self.signal_nonan = signal[~np.isnan(signal)]
         
@@ -63,7 +63,8 @@ class BayesianChangePointEstimator:
                 print("Hier passiert was!", results.index[i-1], index)
                 plt.axvline(results.index[i-1], color="darkslateblue")
                 plt.axvline(index, color="darkslateblue")
-                plt.axvspan(results.index[i-1], index, alpha=0.3, color="darkslateblue")
+                plt.axvspan(results.index[i-1], index, alpha=0.5, color="darkslateblue")
+                #plt.axhline(means[i], index, index)
                 clstr = now
         
         return {"mu": means, "sd": sds, "weights": weights, "n_transitions": len(cs) - 1, "n_clusters": len(np.unique(c))}
@@ -72,16 +73,20 @@ class BayesianChangePointEstimator:
         
         # do interpolation
         signal_interpolated = pd.DataFrame(self.signal).interpolate().values.ravel().reshape(1, -1)[0]
-        growth = np.abs(np.diff(signal_interpolated, n=1))
+        signal_interpolated = pd.DataFrame(signal_interpolated).ffill().bfill().values.reshape(1, -1)
+        #growth = np.abs(np.diff(signal_interpolated, n=1))
+        growth = pd.DataFrame(signal_interpolated).rolling(window=50, center=True).std()
+        growth.bfill(inplace=True)
+        growth.ffill(inplace=True)
+        growth = growth.values.reshape(1, -1)[0]
         growth[np.isnan(growth)] = 0.0
-        growth[growth < 0.2] = 0.0
+        #growth[growth < 0.2] = 0.0
         growth = growth / np.sum(growth)
 
         return growth
         
     def change_learning(self, n_components = 15):
         growth = self.change_transform()
-        print(growth)
         selection = np.random.choice(np.arange(growth.shape[0]), p=growth, size=20000)
         
         # initialize mixture model
@@ -166,9 +171,9 @@ if __name__ == "__main__":
     sample = np.random.choice(np.arange(signal.shape[0]), size=50)
     plain[sample] = signal[sample]
     c = BayesianChangePointEstimator(plain, signal)
-    print(c.estimate_states())
-    plt.show()
-    #c.change_learning_plot()
+    #print(c.estimate_states())
+    #plt.show()
+    c.change_learning_plot()
      
     
     
