@@ -1,181 +1,174 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import logging
-
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-from matplotlib import rc
 
 import numpy as np
-import cupy as cp
 import pandas as pd
-import pymc3 as pm
+import matplotlib as mpl
 import seaborn as sns
-import theano.tensor as tt
+from conda.common import signals
+from scipy.stats import norm, mannwhitneyu
+from sklearn.mixture import BayesianGaussianMixture
+from pygments.unistring import Pc
 
+plt.style.use('bmh')
+sns.set_context("paper")
 
-
-def norm_pdf(x, mu, s):
-    return (1/(2*np.pi*s)**0.5)*np.e**(-(x-mu)**2/(2*s))
-
-def stick_breaking(beta):
-    portion_remaining = tt.concatenate([[1], tt.extra_ops.cumprod(1-beta)[:-1]])
-    return beta * portion_remaining
-
-class BayesianCPE:
-    """
-    Bayesian changepoint estimatior using truncated Dirichlet mixture models.
-    """
-    def __init__(self, ys: np.ndarray, n_components: int = 20, original: np.ndarray = None):
-        self.model = pm.Model()
-        self.ys = ys
-        self._calculate_growth()
-        self.n_components = n_components
+class BayesianChangePointEstimator:
+    
+    def __init__(self, 
+                 signal: np.ndarray,
+                 original: np.ndarray,
+                 ):
+        self.signal = signal
         self.original = original
-              
-    def _calculate_growth(self): 
         
-        # TODO 
-        resample = int(self.ys.shape[0] * 1.5)
-    
-        # calculate interpolation
-        signal = pd.DataFrame(self.ys).interpolate(method="spline", order=3).values.ravel().reshape(1, -1)[0]
-        growth = np.abs(np.gradient(signal))
-           
-        #plt.plot(signal)
-        plt.hist(self.ys, bins=50)
-        plt.show()    
+        self.signal_nonan = signal[~np.isnan(signal)]
         
-        self.growth[self.growth <= 0.0001] = np.nan
-        self.growth = pd.DataFrame(self.growth)
-        self.growth.ffill(inplace=True)
-        self.growth.bfill(inplace=True)
-       
-        #normalize
-        self.growth = self.growth.values.reshape(1, -1)[0]
-        self.growth = (self.growth / np.sum(self.growth)) 
+    def estimate_states(self, n_components = 10) -> dict:
         
-        plt.plot(range(len(self.growth)), self.growth)
-        plt.show()
-        
-        # draw samples of likely change point positions
-        self.selection = cp.asnumpy(cp.random.choice(cp.arange(1, self.growth.shape[0]+1), p=self.growth, size=resample))
-    
-    def generate_priors(self):
-        
-        # maximum number of components the mixture model / truncation point
-        K = self.n_components
-        
-        # number of re-sampled items
-        N = self.selection.shape[0]
-        
-        with self.model:
-            
-            # mixture weights are drawn from a Dirichlet distribution
-            w = pm.Dirichlet('w', np.ones(K))
-            component = pm.Categorical('component', w, shape=N)
-            
-            # each mixture component has independent mean and concentration
-            mu = pm.Uniform('mu', 0.0, 1.0 * N, shape=K)
-            tau = pm.Gamma('tau', 1.0, 1.0, shape=K)
-            obs = pm.Normal('obs', mu[component], tau[component], observed=self.selection)
-            
-            # preparing MCMC sampling steps
-            step1 = pm.Metropolis(vars=[w, mu, tau, obs])
-            step2 = pm.ElemwiseCategorical([component], np.arange(K))
-            self.steps = [step1, step2]
-               
-    def sample_posteriors(self, samples=1000, chains=4, tune=500, retain=500):
-        with self.model as model:
-            try: 
-                if retain >= samples:
-                    logging.warning("Cannot discard {} samples when only sampling {}; now setting #samples to {}".format(retain, samples, retain+1000))
-                    samples = retain + 1000
-                    
-                trace = pm.sample(samples, self.steps, chains=chains, tune=tune, n_init=1000)
-                
-                self.trace = dict()
-                for rv in ["mu", "tau", "w"]:
-                    self.trace[rv] = np.array( trace[rv][- retain:] )
-                
-            except ValueError as ver:
-                logging.error(ver)
-                logging.error(model.check_test_point())
-                
-    def visualize_model(self):
-        
-        # config foo
-        plt.style.use('fivethirtyeight')
-        sns.set_context("paper")
-                
-        mean_centroid = self.trace["mu"].mean(0)
-        tau_centroids = self.trace["tau"].mean(0)
-        mean_weights = self.trace["w"].mean(0)
-        sigmas = np.array(list(map(lambda t: 1/t, tau_centroids)))
-        
-        confidence = pd.DataFrame({"x": np.arange(0, self.n_components), "tau":tau_centroids, "w": mean_weights})
-        confidence = confidence.sort_values(by=["w"], ascending=False)
-        #fig = plt.figure()
-
-        nw = plt.subplot(2, 2, 1)
-        nw.title.set_text('Time Series')
-        
-        sns.lineplot(np.arange(self.ys.shape[0]), self.ys, linewidth=0.75, color="black", label="observation", ax=nw)
-        if self.original is not None:
-            sns.lineplot(np.arange(self.original.shape[0]), self.original, linewidth=0.75, color="grey", label="observation (original)", ax=nw,  zorder=2)
-        
-        for i in range(self.n_components):
-            alpha = mean_weights[i] / 2
-            nw.axvline(x=mean_centroid[i], color="firebrick", linewidth=1, alpha=alpha)
-            nw.axvspan(mean_centroid[i] - sigmas[i], mean_centroid[i] + sigmas[i], alpha=alpha, facecolor="firebrick")
-        
-        nw.set_xlim((0, self.ys.shape[0]))
-        
-        ne = plt.subplot(2, 2, 2)
-        ne.title.set_text('AVG mixture component weight')
-        ne.set_xlabel("average mixture component weight")
-        ne.set_ylabel("mixture component")
-        
-        # see https://stackoverflow.com/questions/39864958/define-hues-by-column-values-in-seaborn-barplot
-        sns.barplot(
-            data = confidence, 
-            x = confidence.index.values, 
-            y = "w",  
-            ax = ne, 
-            palette=mpl.cm.ScalarMappable(cmap='summer').to_rgba(confidence['tau'])
+        # initialize mixture model
+        state_mix = BayesianGaussianMixture(
+            n_components, 
+            n_init = 1,
+            weight_concentration_prior_type = "dirichlet_process",
+            verbose = 1,
+            tol = 1e-6,
+            max_iter = 500
         )
         
-        sw = plt.subplot(2, 2, 3)
-        sw.title.set_text('Time Series Slope (smoothed, normalized)')
-        sns.lineplot(np.arange(self.growth.shape[0]), self.growth, linewidth=0.8, color="black", label="slope", ax=sw)
-        sw.set_xlabel("time")
-        sw.set_ylabel("slope")
+        # fit mixture model
+        state_mix.fit(self.signal_nonan.reshape(-1, 1))
         
-        se = plt.subplot(2, 2, 4)
-        se.title.set_text('Posterior Estimation')
-        xs = np.arange(self.ys.shape[0])
+        # get the posterior stuff
+        means = state_mix.means_
+        sds = state_mix.covariances_
+        weights = state_mix.weights_
         
-        posterior = np.zeros(self.ys.shape[0])
-        for i in range(self.n_components):
-            ys = np.array(list(map(lambda x: norm_pdf(x, mean_centroid[i], sigmas[i]), xs)))
-            plt.plot(xs, mean_weights[i]* ys, linewidth=0.5, color="mediumblue", linestyle=":")
-            posterior += mean_weights[i] * ys
-        sns.lineplot(xs, posterior, linewidth=0.8, color="steelblue")
+        # count state transitions
+        ss = pd.DataFrame(self.signal)
+        ss = ss.dropna()
+        c = state_mix.predict(ss)
+        results = ss
+        results["cluster"] = c
+        cs = c[np.insert(np.diff(c).astype(np.bool), 0, True)]
+            
+        clstr = results["cluster"][results.index[0]]
+        
+        sns.lineplot(np.arange(self.original.shape[0]), self.original, linewidth=0.7, color="black")
+        for i, index in enumerate(results.index):
+            now = results["cluster"][results.index[i]]
+            if clstr != now:
+                print("Hier passiert was!", results.index[i-1], index)
+                plt.axvline(results.index[i-1], color="darkslateblue")
+                plt.axvline(index, color="darkslateblue")
+                plt.axvspan(results.index[i-1], index, alpha=0.3, color="darkslateblue")
+                clstr = now
+        
+        return {"mu": means, "sd": sds, "weights": weights, "n_transitions": len(cs) - 1, "n_clusters": len(np.unique(c))}
+        
+    def change_transform(self):
+        
+        # do interpolation
+        signal_interpolated = pd.DataFrame(self.signal).interpolate().values.ravel().reshape(1, -1)[0]
+        growth = np.abs(np.diff(signal_interpolated, n=1))
+        growth[np.isnan(growth)] = 0.0
+        growth[growth < 0.2] = 0.0
+        growth = growth / np.sum(growth)
+
+        return growth
+        
+    def change_learning(self, n_components = 15):
+        growth = self.change_transform()
+        print(growth)
+        selection = np.random.choice(np.arange(growth.shape[0]), p=growth, size=20000)
+        
+        # initialize mixture model
+        change_mix = BayesianGaussianMixture(
+            n_components, 
+            n_init = 1,
+            weight_concentration_prior_type = "dirichlet_process",
+            tol = 1e-9,
+            verbose=1,
+            max_iter = 1000,
+            #init_params = "random"
+        )
+        change_mix.fit(selection.reshape(-1, 1))
+        
+        # get the posterior stuff
+        means = change_mix.means_
+        sds = change_mix.covariances_
+        weights = change_mix.weights_
+        
+        # count state transitions
+        ss = pd.DataFrame(self.signal)
+        ss = ss.dropna()
+        c = change_mix.predict(ss)
+        
+        return {"mu": means[:,0], "sd": sds, "weights": weights, "n_cps": len(np.unique(c))}
+            
+    def change_learning_plot(self):
+        
+        res = self.estimate_states()
+        if res["n_clusters"] == 1:
+            return
+        
+        ax1 = plt.subplot2grid((2, 3), (0, 0), colspan=2)
+        ax1.set_xlabel("time [revisions]")
+        ax1.set_ylabel("performance [s]")
+        sns.lineplot(np.arange(self.original.shape[0]), self.original, color="black", ax=ax1, linewidth=0.7)
+        sns.scatterplot(np.arange(self.signal.shape[0]), self.signal, marker="X", s=60, color="blue")
+        
+        
+        ax2 = plt.subplot2grid((2, 3), (1, 0), colspan=2)
+        ax2.set_xlabel("time [revisions]")
+        ax2.set_ylabel("performance change [normalized]")
+        growth = self.change_transform()  
+        sns.lineplot(np.arange(growth.shape[0]), growth, ax=ax2)
+        
+        ax3 = plt.subplot2grid((2, 3), (0, 2))
+        ax3.set_xlabel("performance [s]")
+        ax3.set_ylabel("frequency [normnalized]")
+        sns.distplot(self.signal_nonan, ax=ax3, bins=50, label="sample", kde=False, norm_hist=True)
+        sns.distplot(self.original[~np.isnan(self.original)], ax=ax3, bins=50, label="ground truth", kde=False, norm_hist=True)
+        ax3.legend()
+        
+        ax4 = plt.subplot2grid((2, 3), (1, 2))
+        ax4.set_xlabel("mixture component")
+        ax4.set_ylabel("mixture component")
+        
+        # do the stuff
+        res = self.change_learning()
+        
+        sns.barplot(
+            x = np.arange(res["weights"].shape[0]),
+            y = res["weights"],
+            ax = ax4,
+            facecolor="steelblue",
+            #palette=mpl.cm.ScalarMappable(cmap='summer').to_rgba(1/res["sd"][:,0,0]) #tau
+        )
+        
+        precision = 1 / res["sd"][:,0,0]
+        precision = precision / np.max(precision)
+        
+        for i in range(res["mu"].shape[0]):            
+            ax1.axvline(res["mu"][i], color="firebrick")
         
         plt.show()
-                             
-#signal = np.array([20 for i in range(50)] + [np.nan,np.nan,np.nan,np.nan,np.nan,np.nan] + [40 for i in range(50)] +[np.nan,np.nan,np.nan,np.nan,np.nan,np.nan] + [60 for i in range(50)])*1.0
-#signal += np.array([np.random.normal(0, 0.1) for i in range(signal.shape[0])])
 
-signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/pillow.csv")
-signal = signal[signal.columns[5]][:]
-signal = pd.DataFrame(signal).values.reshape(1, -1)[0]
-plain = np.full(signal.shape, np.nan)
-sample = np.random.choice(np.arange(signal.shape[0]), size=4000)
-plain[sample] = signal[sample]
-
-a = BayesianCPE(plain)
-#a.generate_priors()
-#a.sample_posteriors()
-#a.visualize_model()
+if __name__ == "__main__":
+    signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/pillow.csv")
+    signal = signal[signal.columns[13]][:]
+    signal = pd.DataFrame(signal).values.reshape(1, -1)[0]
+    plain = np.full(signal.shape, np.nan)
+    np.random.seed(66)
+    sample = np.random.choice(np.arange(signal.shape[0]), size=50)
+    plain[sample] = signal[sample]
+    c = BayesianChangePointEstimator(plain, signal)
+    print(c.estimate_states())
+    plt.show()
+    #c.change_learning_plot()
+     
+    
+    
