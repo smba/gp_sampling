@@ -1,40 +1,45 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import matplotlib.pyplot as plt
+from copy import deepcopy
+import random
+
+from sklearn.mixture import BayesianGaussianMixture
 
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
-import seaborn as sns
-from conda.common import signals
-from scipy.stats import norm, mannwhitneyu
-from sklearn.mixture import BayesianGaussianMixture
-from sklearn.linear_model import LinearRegression
-import logging
-from youtube_dl.aes import mix_column
-from oauthlib.uri_validate import ls32
 
-#plt.style.use('bmh')
-sns.set_context("paper")
-
-class BayesianSparseCPE(object):
+class BayesianSparseCPE:
     '''
-    classdocs
+    This class provides two strategies to estimate the location of change-points in a given time-series.
+    Along with the estimated location, a measure of uncertainty is given.
     '''
 
-    def __init__(
-            self, 
-            observation: np.ndarray,
-            original: np.ndarray = None
-        ):
+    def __init__(self, observation: np.ndarray, original: np.ndarray = None):
+        '''
+        Initializes the Change-Point Estimator (CPE) with observed data of a time-series. The length 
+        of this array is equal to the total number of the original signal. Un-observed coordinates in the
+        time-series are represented by NaN.
         
+        Optionally, one can specify the original signal (if available) to compare the inferred change-points 
+        with the estimation based on the complete data set.
+        
+        :param observation: array with observed and un-observed data points
+        :param original: array with all measurements of the time-series (optional)
+        '''
+        
+        # observation and original must have the same shape
         assert observation is not None or observation.shape == original.shape
         
         self.observation = observation
         self.original = original
         
-    def _interpolate(self, noise = 0.00):
+    def _interpolate(self, noise: float = 0.0):
+        '''
+        Fills missing data with a piece-wise linear interpolation.
+        
+        :param noise: add Gaussian noise to the interpolation with variance $noise (optional)
+        '''
         
         # apply linear interpolation
         self.interpolated = pd.DataFrame(self.observation).interpolate().values.ravel().reshape(1, -1)[0]
@@ -44,17 +49,31 @@ class BayesianSparseCPE(object):
             if np.isnan(self.observation[i]):
                 self.interpolated[i] += np.random.normal(0.0, noise)
                 
-    def _interpolate_variance(self, window = 20):
-        self._interpolate()
+    def _interpolate_variance(self, window = 20, noise: float = 0.0):
+        '''
+        Calculates the rolling variance for the interpolated time-series.
+        
+        :param window: window size for the rolling variance
+        :param noise: noise level for the interpolation (default is 0.0, cf. _interpolate())
+        '''
+        
+        self._interpolate(noise)
         
         variance = pd.DataFrame(self.interpolated).rolling(window=window, center=True).std()
         variance.bfill(inplace=True)
         variance.ffill(inplace=True)
         variance = variance.values.reshape(1, -1)[0]
+        
         return variance / np.sum(variance)
     
-    def _interpolate_change(self, diff_n = 1):
-        self._interpolate()
+    def _interpolate_change(self, diff_n = 1, noise: float = 0.0):
+        '''
+        Calculates the difference of each revision to the $diff_n previous one based on the interpolation.
+        
+        :param diff_n: distance to the previous revision (default is 1)
+        :param noise: noise level for the interpolation (default is 0.0, cf. _interpolate())
+        '''
+        self._interpolate(noise)
         
         change = pd.DataFrame(np.abs(np.diff(self.interpolated, n=diff_n)))
         change.bfill(inplace=True)
@@ -62,16 +81,27 @@ class BayesianSparseCPE(object):
         change = change.values.reshape(1, -1)[0]
         return change / np.sum(change)
 
-    def predict_cp_locations(self, mode = 'variance'):
-        pass
-
-    def predict_cp_interval(self, plot=False, show=False, N = 15):
-        change = self._interpolate_variance().reshape(-1, 1)[:,0]
-        selection = np.random.choice(np.arange(change.shape[0]), p=change, size=10000)
-        # initialize mixture model100
+    def predict_cp_locations(self, n_components=30, mode = 'variance'):
+        '''
+        Estimated the variance/change of the interpolation using a truncated Dirichlet Gaussian Mixture Model.
+        This automatically infers the most likely number of mixture components.
+        
+        :param n_components: maximum number of components of the mixture model (default is 30)
+        :param mode: interpolation mode, wither 'variance' or 'change' (default is 'variance')
+        '''
+        
+        if mode == 'variance':
+            change = self._interpolate_variance()
+        elif mode == 'change':
+            change = self._interpolate_change()
+        
+        change = change.reshape(-1, 1)[:,0]
+        selection = np.random.choice(np.arange(change.shape[0]), p=change, size = 5 * self.observation.shape[0])
+        
         change_mix = BayesianGaussianMixture(
-            N, 
-            n_init = 1,
+            n_components, 
+            n_init = 5,
+            tol = 1e-3,
             weight_concentration_prior_type = "dirichlet_process",
             verbose = 1,
             max_iter = 500
@@ -79,62 +109,91 @@ class BayesianSparseCPE(object):
         
         change_mix.fit(selection.reshape(-1, 1))
         
+        means = change_mix.means_[:,0]
+        covariances = change_mix.covariances_[:,0,0]
+        
+        result = pd.DataFrame({"ev": means, "sd": covariances})
+        #result.drop( result[ result['weight'] < 0.01 ].index , inplace=True)
+        result.sort_values(by=["mean"], inplace=True)
+        result["mean"] = result["mean"].values.astype(int) 
+        result.index = np.arange(result.shape[0])
+
+        result = result[result["weight"] > 0.001]
+        result.index = np.arange(result.shape[0])
+
+        return result
     
-        if plot:
-            ax1 = plt.subplot(2, 1, 1)
-            
-            if self.original is not None:
-                sns.lineplot(np.arange(self.original.shape[0]), self.original, ax=ax1, color="grey", alpha=0.5)
-            sns.lineplot(np.arange(self.interpolated.shape[0]), self.interpolated, color="black", ax=ax1)
-            sns.scatterplot(np.arange(self.observation.shape[0]), self.observation, marker="X", color="crimson", ax=ax1, s=100)
+    def predict_cp_interval(self, n_components = 30):
+        '''
+        Estimates the (phenotypical) levels of observed amplitudes, regardless of order. Consequently, each
+        observed time-point is classified. Between each transition from one inferred level to another one, a
+        change-point with uniform distirbution is inferred.
         
-            for i in range(change_mix.weights_.shape[0]):
-                plt.axvline(change_mix.weights_[i], color="steelblue")
-        
-            ax2 = plt.subplot(2, 1, 2)
-            sns.barplot(np.arange(change_mix.weights_.shape[0]), change_mix.weights_, color="firebrick")
-            
-        if show:
-            plt.show()
-        else:
-            plt.draw()
-            plt.savefig("out.pdf", bbox_inches="tight")
-    
-    """
-    def _cluster_means(self):
-        
-        # drop NaN
-        observation = self.observation[~np.isnan(self.observation)]
-        
-        # initialize mixture model
+        :param n_components: maximum number of components of the mixture model (default is 30)
+        '''
+         
         state_mix = BayesianGaussianMixture(
-            30, 
-            n_init = 1,
-            weight_concentration_prior_type = "dirichlet_process",
+            n_components, 
+            n_init = 5,
+            weight_concentration_prior_type = 'dirichlet_process',
             verbose = 1,
             max_iter = 500
         )
         
-        # fit mixture model
-        state_mix.fit(observation.reshape(-1, 1))
+        observed = self.observation[~np.isnan(self.observation)].reshape(-1, 1)
         
-        # get the posterior stuff
-        means = state_mix.means_
-        sds = state_mix.covariances_
-        weights = state_mix.weights_
+        state_mix.fit(observed)
         
-        return means, sds, weights
-    """
-    
+        classified = deepcopy(self.observation)
+        predicted = state_mix.predict(classified[~np.isnan(classified)].reshape(-1, 1))
+        classified[~np.isnan(classified)] = predicted
+        
+        last = None
+        begin = 0
+        for i, c in enumerate(classified):
+            if not np.isnan(c):
+                last = c
+                begin = i
+                break
+        
+        segments = []
+        for i in range(begin, classified.shape[0]):
+            if not np.isnan(classified[i]):
+                if classified[i] != last:
+                    s = np.max(np.argwhere(~np.isnan(classified[0:i-1])))
+                    segments.append((s, i))
+                last = classified[i]
+                begin = i
+        
+        
+        # calculate uniform distribution parameters
+        result = []
+        for segment in segments:
+            a = segment[0]
+            b = segment[1]
+            distro = {
+                'ev' : (a + b) / 2,
+                'sd': np.sqrt(((b - a + 1)**2 - 1)/12)
+            }
+            result.append(distro)
+        result = pd.DataFrame(result)
+        
+        return result
+        
+"""
 if __name__ == "__main__":
     signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/pillow.csv")
     signal = signal[signal.columns[11]][:]
-    signal = pd.DataFrame(signal).values.reshape(1, -1)[0]
+    signal = signal.values.reshape(1, -1)[0]
     plain = np.full(signal.shape, np.nan)
     np.random.seed(200)
+    
     sample = np.random.choice(np.arange(signal.shape[0]), size=400)
     plain[sample] = signal[sample]
-        
     c = BayesianSparseCPE(plain, signal)
-    c.predict_cp_interval(plot=True, show=True)#(0.05)10
+    #c.predict_cp_interval(plot=True, show=True)
+    cres = c.predict_cp_locations()
+    #cres = c.predict_cp_interval(plot=True, show=True)
+    print(cres)
+"""
         

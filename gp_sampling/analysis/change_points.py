@@ -8,7 +8,6 @@ import ruptures
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-from Cython.Compiler.Nodes import PassStatNode
  
 
 class ChangePointAnalyzer:
