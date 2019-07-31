@@ -1,3 +1,7 @@
 gpflow
 tensorflow
-scikit-optimize
+sklearn
+matplotlib
+seaborn
+pandas
+scipy
