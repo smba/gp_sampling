@@ -113,7 +113,6 @@ class BayesianSparseCPE:
         covariances = change_mix.covariances_[:,0,0]
         
         result = pd.DataFrame({"ev": means, "sd": covariances})
-        #result.drop( result[ result['weight'] < 0.01 ].index , inplace=True)
         result.sort_values(by=["mean"], inplace=True)
         result["mean"] = result["mean"].values.astype(int) 
         result.index = np.arange(result.shape[0])
