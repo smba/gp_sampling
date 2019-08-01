@@ -2,12 +2,18 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
+import logging
 import random
 
-from sklearn.mixture import BayesianGaussianMixture
+from scipy.stats.mstats_basic import mannwhitneyu
 
+import metrics
 import numpy as np
 import pandas as pd
+from sklearn.cluster import DBSCAN
+from sklearn.mixture import BayesianGaussianMixture
+from sklearn.preprocessing import MinMaxScaler
+
 
 class BayesianSparseCPE:
     '''
@@ -90,6 +96,8 @@ class BayesianSparseCPE:
         :param mode: interpolation mode, wither 'variance' or 'change' (default is 'variance')
         '''
         
+        logging.warn("Predicting CP locations")
+        
         if mode == 'variance':
             change = self._interpolate_variance()
         elif mode == 'change':
@@ -100,8 +108,7 @@ class BayesianSparseCPE:
         
         change_mix = BayesianGaussianMixture(
             n_components, 
-            n_init = 5,
-            tol = 1e-3,
+            n_init = 1,
             weight_concentration_prior_type = "dirichlet_process",
             verbose = 1,
             max_iter = 500
@@ -109,17 +116,37 @@ class BayesianSparseCPE:
         
         change_mix.fit(selection.reshape(-1, 1))
         
+        weights = change_mix.weights_[:]
         means = change_mix.means_[:,0]
         covariances = change_mix.covariances_[:,0,0]
         
-        result = pd.DataFrame({"ev": means, "sd": covariances})
-        result.sort_values(by=["mean"], inplace=True)
-        result["mean"] = result["mean"].values.astype(int) 
+        result = pd.DataFrame({"ev": means, "sd": covariances, "weight": weights})
+        result.sort_values(by=["sd"], inplace=True)
+        result["ev"] = result["ev"].values.astype(int) 
         result.index = np.arange(result.shape[0])
-
         result = result[result["weight"] > 0.001]
         result.index = np.arange(result.shape[0])
-
+        
+        # measure the significance and effect size
+        #significances = []
+        #a12s = []
+        W = 30
+        for i in range(result.shape[0]):
+            ev = result["ev"][i]
+            left = 0 if i == 0 else result["ev"][i-1]
+            right = self.interpolated.shape[0] if i == result.shape[0]-1 else result["ev"][i+1]
+            segment1 = self.interpolated[left : ev]
+            segment2 = self.interpolated[ev: right]
+            print(len(segment1), len(segment2))
+            #significances.append(mannwhitneyu(segment1, segment2).pvalue)
+            #a12s.append(2*np.abs(metrics.a12(segment1, segment2) - 0.5))
+        
+        #result["significance"] = significances
+        #result["a12"] = a12s
+        #print(result)
+        #result = result[result["significance"] <= 0.05]
+        #result = result[result["a12"] > 0.5]
+        result.index = np.arange(result.shape[0])
         return result
     
     def predict_cp_interval(self, n_components = 30):
@@ -130,13 +157,16 @@ class BayesianSparseCPE:
         
         :param n_components: maximum number of components of the mixture model (default is 30)
         '''
+        
+        logging.warn("Predicting CP intervals")
          
         state_mix = BayesianGaussianMixture(
             n_components, 
-            n_init = 5,
-            weight_concentration_prior_type = 'dirichlet_process',
+            n_init = 10,
+            weight_concentration_prior_type = 'dirichlet_distribution',
             verbose = 1,
-            max_iter = 500
+            max_iter = 500,
+            tol=1e-12
         )
         
         observed = self.observation[~np.isnan(self.observation)].reshape(-1, 1)
@@ -171,28 +201,47 @@ class BayesianSparseCPE:
             a = segment[0]
             b = segment[1]
             distro = {
-                'ev' : (a + b) / 2,
-                'sd': np.sqrt(((b - a + 1)**2 - 1)/12)
+                'begin': a,
+                'end': b
             }
             result.append(distro)
         result = pd.DataFrame(result)
         
-        return result
+        return result, state_mix
         
-"""
+
 if __name__ == "__main__":
+    import analysis.change_points as cp
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import ruptures
+    
     signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/pillow.csv")
     signal = signal[signal.columns[11]][:]
     signal = signal.values.reshape(1, -1)[0]
     plain = np.full(signal.shape, np.nan)
-    np.random.seed(200)
+    np.random.seed(350)
     
-    sample = np.random.choice(np.arange(signal.shape[0]), size=400)
+    sample = np.random.choice(np.arange(signal.shape[0]), size=450)
     plain[sample] = signal[sample]
-    c = BayesianSparseCPE(plain, signal)
-    #c.predict_cp_interval(plot=True, show=True)
-    cres = c.predict_cp_locations()
-    #cres = c.predict_cp_interval(plot=True, show=True)
-    print(cres)
-"""
+    c = BayesianSparseCPE(plain, signal)    
+    intervals, state_mix = c.predict_cp_interval(30)
+    locations = c.predict_cp_locations(mode="change")
+    
+    print(locations)
+    
+    sns.lineplot(np.arange(signal.shape[0]), signal, linewidth=0.3, color="black")
+    #plt.scatter(np.arange(plain.shape[0]), plain, marker="X")
+    
+    for i in range(intervals.shape[0]):
+        plt.axvspan(intervals["begin"][i], intervals["end"][i], alpha=0.5, color="moccasin")
+    
+    for i in range(state_mix.means_.shape[0]):
+        if state_mix.weights_[i] > 0.001:
+            plt.axhline(state_mix.means_[i], color="silver", linestyle=":", linewidth=0.8)
+    # = cres[cres["a12"] > 0.75]
+    #cres.index = np.arange(cres.shape[0])
+    #for i in range(cres.shape[0]):
+    #    plt.axvline(cres["ev"][i], color="lime")
+    plt.show()
         
