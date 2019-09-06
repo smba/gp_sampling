@@ -1,9 +1,23 @@
+'''
+'Initial check: Use GPU-powered variant of GPy (gpytorch) if available, otherwise, resort to GPy.
+'''
+
 from abc import ABC, abstractmethod
+import sys
 from typing import Tuple
+
 import gpflow
+
 import numpy as np
 import pandas as pd
 import sklearn.preprocessing as preprocessing
+
+
+assert 'GPy' in sys.modules or 'gpytorch' in sys.modules
+if 'gpytorch' in sys.modules:
+    import gpytorch as gpy
+else:
+    import GPy as gpy
 
 class IterativeLearner(ABC):
     '''
@@ -21,7 +35,10 @@ class IterativeLearner(ABC):
                  ys: np.ndarray,
                  kern: gpflow.kernels.Kernel=gpflow.kernels.RBF(input_dim=1),
                  init_training: int=3):
+        
+        # TODO: migrate gpflow to gpy
         self.kernel = kern
+        
         self.scaler = preprocessing.StandardScaler().fit(ys.reshape(-1, 1))
         self.xs = xs.reshape(-1, 1)
         self.ys = self.scaler.transform(ys.reshape(-1, 1))
@@ -37,6 +54,7 @@ class IterativeLearner(ABC):
         '''
         return self.scaler.transform(ys)
     
+    # TODO: migrate gpflow to gpy
     def _transform_inverse(self, ys: np.ndarray) -> np.ndarray:
         '''
         Transform an observation back from internal scales back to its original form.
@@ -51,6 +69,8 @@ class IterativeLearner(ABC):
         
         '''
         xs = self.xs[self.training_set] * 1.0
+        
+        # TODO: migrate gpflow to gpy
         self.model = gpflow.models.GPR(
                 xs, self.ys[self.training_set],
                 kern=self.kernel
@@ -110,7 +130,10 @@ class IterativeRandomLearner(IterativeLearner):
     def __init__(self,
                  xs: np.ndarray,
                  ys: np.ndarray,
+                 
+                 # TODO: migrate gpflow to gpy
                  kernel: gpflow.kernels.Kernel=gpflow.kernels.RBF(input_dim=1),
+                 
                  init_training: int=3):
         IterativeLearner.__init__(self, xs, ys, kernel, init_training)
                   
@@ -138,7 +161,10 @@ class ActiveLearner(IterativeLearner):
     def __init__(self,
                  xs: np.ndarray,
                  ys: np.ndarray,
+                 
+                 # TODO: migrate gpflow to gpy
                  kernel: gpflow.kernels.Kernel=gpflow.kernels.RBF(input_dim=1),
+                 
                  init_training: int=3):
         IterativeLearner.__init__(self, xs, ys, kernel, init_training)
                   
@@ -165,7 +191,10 @@ class BalancedActiveLearner(ActiveLearner):
     def __init__(self,
                  xs: np.ndarray,
                  ys: np.ndarray,
+                 
+                 # TODO: migrate gpflow to gpy
                  kernel: gpflow.kernels.Kernel=gpflow.kernels.RBF(input_dim=1),
+                 
                  init_training: int=3,
                  balance_limit=200):
         ActiveLearner.__init__(self, xs=xs, ys=ys, kernel=kernel, init_training=init_training)
@@ -196,3 +225,4 @@ class BalancedActiveLearner(ActiveLearner):
         
         return means, std
         
+

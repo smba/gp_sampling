@@ -121,7 +121,7 @@ class WindowChangePointAnalyzer(ChangePointAnalyzer):
         width = kwargs["width"] if "width" in kwargs else 10
         
         estimator = ruptures.Window(width=width, model=model).fit(ys)
-        return estimator.predict(pen=1)
+        return estimator.predict(pen=0.1)
 
 class BinaryChangePointAnalyzer(ChangePointAnalyzer):
     '''
@@ -138,7 +138,7 @@ class BinaryChangePointAnalyzer(ChangePointAnalyzer):
         model = kwargs["model"] if "model" in kwargs else "l2"
         estimator = ruptures.Binseg(model=model).fit(ys)
         
-        return estimator.predict(pen=3)
+        return estimator.predict(pen=0.1)
     
 class BottomUpChangePointAnalyzer(ChangePointAnalyzer):
     '''
@@ -185,6 +185,7 @@ class ConfidenceIntervalAnalyzer(ChangePointAnalyzer):
 
         return list(sigs != 1.0)
 
+
 class SignificanceAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for change point estimation using the Mann-Whitney-U significance test
@@ -202,14 +203,15 @@ class SignificanceAnalyzer(ChangePointAnalyzer):
         :return: list of estimated change points
         '''
         p = kwargs["p"] if "p" in kwargs else 0.05
-        window = kwargs["window"] if "window" in kwargs else 10
+        window = kwargs["window"] if "window" in kwargs else 200
         ys = pd.DataFrame(ys)
         
         rolling = ys.rolling(window=window, center=True)
         sig = lambda s: stats.mannwhitneyu(s[:int(window/2)], s[int(window/2):]).pvalue
         sigs = rolling.apply(sig)
         return list(sigs[sigs < p].dropna())
-    
+
+ 
 class ThresholdAnalyzer(ChangePointAnalyzer):
     '''
     Wrapper class for change point estimation using threshold deviation.

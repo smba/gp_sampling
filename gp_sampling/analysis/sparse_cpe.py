@@ -9,6 +9,9 @@ from sklearn.mixture import BayesianGaussianMixture
 import numpy as np
 import pandas as pd
 
+import matplotlib.pyplot as plt 
+import seaborn as sns
+
 class BayesianSparseCPE:
     '''
     This class provides two strategies to estimate the location of change-points in a given time-series.
@@ -104,23 +107,22 @@ class BayesianSparseCPE:
             tol = 1e-3,
             weight_concentration_prior_type = "dirichlet_process",
             verbose = 1,
-            max_iter = 500
+            max_iter = 100
         )
         
         change_mix.fit(selection.reshape(-1, 1))
         
         means = change_mix.means_[:,0]
         covariances = change_mix.covariances_[:,0,0]
-        
-        result = pd.DataFrame({"ev": means, "sd": covariances})
-        #result.drop( result[ result['weight'] < 0.01 ].index , inplace=True)
-        result.sort_values(by=["mean"], inplace=True)
-        result["mean"] = result["mean"].values.astype(int) 
+        weights = change_mix.weights_
+        result = pd.DataFrame({"ev": means, "sd": covariances, "w": weights})
+        result.drop( result[ result['w'] < 0.05 ].index , inplace=True)
+        result.sort_values(by=["ev"], inplace=True)
+        result["ev"] = result["ev"].values.astype(int) 
         result.index = np.arange(result.shape[0])
 
-        result = result[result["weight"] > 0.001]
+        #result = result[result["weights"] > 0.001]
         result.index = np.arange(result.shape[0])
-
         return result
     
     def predict_cp_interval(self, n_components = 30):
@@ -179,21 +181,84 @@ class BayesianSparseCPE:
         result = pd.DataFrame(result)
         
         return result
-        
-"""
-if __name__ == "__main__":
-    signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/pillow.csv")
-    signal = signal[signal.columns[11]][:]
-    signal = signal.values.reshape(1, -1)[0]
-    plain = np.full(signal.shape, np.nan)
-    np.random.seed(200)
     
-    sample = np.random.choice(np.arange(signal.shape[0]), size=400)
-    plain[sample] = signal[sample]
-    c = BayesianSparseCPE(plain, signal)
-    #c.predict_cp_interval(plot=True, show=True)
-    cres = c.predict_cp_locations()
-    #cres = c.predict_cp_interval(plot=True, show=True)
-    print(cres)
-"""
+def discrete_cmap(N, base_cmap=None):
+    """Create an N-bin discrete colormap from the specified input map"""
+
+    # Note that if base_cmap is a string or None, you can simply do
+    #    return plt.cm.get_cmap(base_cmap, N)
+    # The following works for string, None, or a colormap instance:
+
+    base = plt.cm.get_cmap(base_cmap)
+    color_list = base(np.linspace(0, 1, N))
+    cmap_name = base.name + str(N)
+    return base.from_list(cmap_name, color_list, N)
+
+class BisectionSparseCPE:
+    def __init__(self, signal: np.ndarray):
+        self.signal = signal
+    
+    def benery_segmentation(self, threshold=5, init = 1):
+    
+        signal = self.signal
+        sample = [0, (signal.shape[0] - 1) // 2, signal.shape[0] - 1]
+        changes = np.array([])
+        
+        con = True
+        
+        while con:
+            changes = np.array([])
+            segments = list(zip(sample[:-1], sample[1:]))
+            
+            for start, end in segments:
+                if np.abs(start - end) <= 1:
+                    change = 0
+                else:
+                    change = np.abs(signal[start] - signal[end])
+                changes = np.append(changes, change)
+                
+            nxt = np.sum(segments[np.argmax(changes)]) // 2
+            sample = sorted(sample + [nxt])
+            con = any(changes > threshold)
+            
+        cps = []
+        for i in range(len(segments)):
+            if changes[i] == 0 and np.abs(signal[segments[i][0]] - signal[segments[i][1]]) > threshold:
+                cps.append(segments[i][1])
+        return cps, sample
+    
+
+if __name__ == "__main__":
+    signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/lrzip.csv")
+    signal = signal[signal.columns[1:]]
+    
+    signal.ffill(inplace=True)
+    signal.bfill(inplace=True)
+    signal -= signal.min()
+    signal /= signal.max()
+    diff_signal = signal.diff()
+    c = 0.5
+    diff_signal[diff_signal > c] = 1
+    diff_signal[diff_signal < -c] = -1
+    diff_signal[(diff_signal < c) & (diff_signal > -c)] = 0
+
+    cpss = []
+    for i in signal.columns[:]:
+        sig = signal[i].values
+        obs = np.random.choice(np.arange(sig.shape[0]), size=120)
+        observation = np.full((sig.shape[0], ), np.nan)
+        observation[obs] = sig[obs]
+        
+        cpe = BayesianSparseCPE(observation, sig)
+        cps = cpe.predict_cp_interval()
+        
+        toadd = cps['ev'] if cps.shape[0] > 0 else [] 
+        cpss.append(toadd)
+    
+    print(cpss)
+    for i in range(len(cpss)):
+        xs = [i for j in range(len(cpss[i]))]
+        plt.scatter(xs, cpss[i], color="black", marker=".")
+    plt.show()
+        
         

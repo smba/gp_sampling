@@ -14,6 +14,6 @@ class FileLoader:
     @classmethod
     def load_ground_truth(cls, path) -> pd.DataFrame:
         #print(path)
-        gt = pd.DataFrame.from_csv(path)
+        gt = pd.read_csv(path)
         #print(gt.columns)
         return gt
