@@ -4,13 +4,15 @@
 from copy import deepcopy
 import random
 
-from sklearn.mixture import BayesianGaussianMixture
+from sklearn.mixture import BayesianGaussianMixture,GaussianMixture
 
 import numpy as np
 import pandas as pd
 
 import matplotlib.pyplot as plt 
 import seaborn as sns
+import xmltodict
+
 
 class BayesianSparseCPE:
     '''
@@ -228,37 +230,118 @@ class BisectionSparseCPE:
         return cps, sample
     
 
+def parseConfiurations(path_to_vm, path_to_configs):
+    decipher = lambda s: (s, 1) if not ';' in s else tuple( s.split(';') )
+
+    configuration_vectors = []
+
+    with open(path_to_vm) as xml_file:
+        doc = xmltodict.parse(xml_file.read())
+        binary_xml = doc['vm']['binaryOptions']['configurationOption']
+        binary_features = []
+        for bfeature in binary_xml:
+            binary_features.append( bfeature['name'] )
+
+        numeric_xml = doc['vm']['numericOptions']['configurationOption']
+        numeric_features = []
+        for nfeature in numeric_xml:
+            numeric_features.append( nfeature['name'] )
+
+        features = binary_features[1:] + numeric_features
+        
+        with open(path_to_configs) as f:
+            lines = f.readlines()
+
+            for line in lines:
+                line = line[line.find('"') + 1:]
+                line = line[:line.find('"')]
+                line = filter(lambda x: x != '', line.split('%;%'))
+                line = dict( map(decipher, line) )
+
+                fline = []
+                fdict = {}
+                for feature in features:
+                    if feature not in line.keys():
+                        fline.append(0)
+
+                        fdict[feature] = 0
+
+                    else:
+                        fline.append( line[feature] )
+
+                        fdict[feature] = line[feature]
+                configuration_vectors.append( fdict )
+    return configuration_vectors
+
 if __name__ == "__main__":
     signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/lrzip.csv")
+    vm = "/home/stefan/git/gp_sampling/resources/ground_truth/lrzip.xml"
+    cfgs = "/home/stefan/git/gp_sampling/resources/ground_truth/lrzip.config"
+    cfgs = parseConfiurations(vm, cfgs)
+    
+    cfgs = pd.DataFrame(cfgs)
+    cfgs = cfgs[['Encryption', 'LzoCompressibilityTesting', 'UnlimitedWindow','Compression', 'Bzip2', 'Gzip', 'Lzo', 'Zpaq']]
+    
     signal = signal[signal.columns[1:]]
     
-    signal.ffill(inplace=True)
-    signal.bfill(inplace=True)
+    
     signal -= signal.min()
     signal /= signal.max()
-    diff_signal = signal.diff()
-    c = 0.5
-    diff_signal[diff_signal > c] = 1
-    diff_signal[diff_signal < -c] = -1
-    diff_signal[(diff_signal < c) & (diff_signal > -c)] = 0
-
-    cpss = []
-    for i in signal.columns[:]:
-        sig = signal[i].values
-        obs = np.random.choice(np.arange(sig.shape[0]), size=120)
-        observation = np.full((sig.shape[0], ), np.nan)
-        observation[obs] = sig[obs]
-        
-        cpe = BayesianSparseCPE(observation, sig)
-        cps = cpe.predict_cp_interval()
-        
-        toadd = cps['ev'] if cps.shape[0] > 0 else [] 
-        cpss.append(toadd)
+    signal.ffill(inplace=True)
+    signal.bfill(inplace=True)
+    signal = signal
+    #signal = signal.T
     
-    print(cpss)
-    for i in range(len(cpss)):
-        xs = [i for j in range(len(cpss[i]))]
-        plt.scatter(xs, cpss[i], color="black", marker=".")
+    # make interpolations
+    observation = np.full((cfgs.shape[0], signal.shape[0]), np.nan)
+    
+    sampling_rate = 0.15
+    #signalt = signal.T
+    N = int(sampling_rate * signal.shape[0])
+    for i in range(observation.shape[0]-1): # per config
+        sample = np.random.choice(np.arange(signal.shape[0]), size=N)
+        observation[i,sample] = signal[str(i)][sample].values
+    
+    interpolated = pd.DataFrame(observation).interpolate(method="akima", axis=1, order=5)
+    interpolated.ffill(inplace=True)#
+    interpolated.bfill(inplace=True)
+    W = 9
+    variance = pd.DataFrame(interpolated).rolling(window=W, center=True, axis=1).std()#**2
+    variance = variance.T
+    print(variance.shape)
+    # create clusterizable data frame
+    new = []
+    for i, c in enumerate(cfgs.values[:]):
+        for t in range(variance.shape[0]-2):
+            vector = np.append(c, [t, variance[i].values[t]])
+            new.append(vector)
+    new = pd.DataFrame(new)
+    new.columns = np.append(cfgs.columns, ["time", "variance"])
+    news = new.values
+    news[:, -1] *= 1 #kosmetik
+    
+    components= 25
+    mm = BayesianGaussianMixture(
+            components, 
+            covariance_type="tied",
+            #init_params="random",
+            n_init = 5,
+            tol = 1e-3,
+            weight_concentration_prior_type = "dirichlet_distribution",
+            verbose = 3,
+            max_iter = 100,
+        )
+        
+    #mm.fit(news[:,:-1], news[:,-1])
+    
+    #for i in range(components):
+    #    print(mm.weights_[i], mm.means_[i][-1])
+        
+    #plt.pcolormesh(variance.T*100, cmap="viridis")
+    #plt.colorbar()
+    
+    #print(variance.shape)
+    variance = variance.values
+    plt.bar(np.arange(signal.shape[0]), np.sum(variance, axis=1))
+    #plt.pcolormesh(variance)
     plt.show()
-        
-        
