@@ -5,6 +5,14 @@ from copy import deepcopy
 import random
 
 from sklearn.mixture import BayesianGaussianMixture,GaussianMixture
+import sklearn.tree as tree
+import sklearn.svm as svm
+import sklearn.linear_model as linear
+import sklearn.ensemble as ensemble
+import sklearn.metrics as metrics
+from sklearn.preprocessing import PolynomialFeatures
+from scipy.stats import norm
+from scipy.signal import find_peaks
 
 import numpy as np
 import pandas as pd
@@ -13,6 +21,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import xmltodict
 
+np.random.seed(123)
 
 class BayesianSparseCPE:
     '''
@@ -295,7 +304,7 @@ if __name__ == "__main__":
     # make interpolations
     observation = np.full((cfgs.shape[0], signal.shape[0]), np.nan)
     
-    sampling_rate = 0.15
+    sampling_rate = 0.5
     #signalt = signal.T
     N = int(sampling_rate * signal.shape[0])
     for i in range(observation.shape[0]-1): # per config
@@ -305,10 +314,10 @@ if __name__ == "__main__":
     interpolated = pd.DataFrame(observation).interpolate(method="akima", axis=1, order=5)
     interpolated.ffill(inplace=True)#
     interpolated.bfill(inplace=True)
-    W = 9
+    W = 10
     variance = pd.DataFrame(interpolated).rolling(window=W, center=True, axis=1).std()#**2
     variance = variance.T
-    print(variance.shape)
+    #print(variance.shape)
     # create clusterizable data frame
     new = []
     for i, c in enumerate(cfgs.values[:]):
@@ -317,31 +326,70 @@ if __name__ == "__main__":
             new.append(vector)
     new = pd.DataFrame(new)
     new.columns = np.append(cfgs.columns, ["time", "variance"])
-    news = new.values
-    news[:, -1] *= 1 #kosmetik
+    #news = new.values
+    #news[:, -1] *= 1 #kosmetik
     
-    components= 25
-    mm = BayesianGaussianMixture(
-            components, 
-            covariance_type="tied",
-            #init_params="random",
+    
+    varsum = np.sum(variance, axis=1)
+    #varsum -= 0.5
+    #varsum[varsum < 0] = 0  
+    
+    n_components = 20
+    mmix = BayesianGaussianMixture(
+            n_components, 
             n_init = 5,
-            tol = 1e-3,
-            weight_concentration_prior_type = "dirichlet_distribution",
-            verbose = 3,
-            max_iter = 100,
+            tol = 1e-12,
+            #weight_concentration_prior_type = "dirichlet_distribution",
+            verbose = 1,
+            max_iter = 1000
         )
-        
-    #mm.fit(news[:,:-1], news[:,-1])
     
-    #for i in range(components):
-    #    print(mm.weights_[i], mm.means_[i][-1])
-        
-    #plt.pcolormesh(variance.T*100, cmap="viridis")
-    #plt.colorbar()
-    
+    #plt.figure(figsize=(10,4))
+
+    varsum = pd.DataFrame(varsum).rolling(window=15, center=True).mean().values
+    varsum[np.isnan(varsum)] = 0.0
+    s = find_peaks(varsum.reshape(1, -1)[0])
+
     #print(variance.shape)
-    variance = variance.values
-    plt.bar(np.arange(signal.shape[0]), np.sum(variance, axis=1))
-    #plt.pcolormesh(variance)
+    
+    
+    #plt.fill_between(np.arange(signal.shape[0]), np.zeros(signal.shape[0]), np.sum(variance, axis=1), alpha=0.5, color="darkgreen", label="variance across variants")
+    #plt.show()
+
+    influences = []
+
+    clf = linear.Ridge()
+
+    for t in np.arange(signal.shape[0]-2):
+        timeslice = new[new["time"] == t]
+        vari = timeslice["variance"].values
+        
+        configs = timeslice[timeslice.columns[:-1]].values
+        #configs = PolynomialFeatures(degree=2).fit_transform(configs)
+            
+        #configs = timeslice[timeslice.columns[:-1]]
+        clf.fit(configs, np.nan_to_num(vari))
+        
+        influences.append(list(clf.coef_))
+        
+        #plt.bar(np.arange(len(clf.coef_)), clf.coef_)
+        #plt.title("Coefficients at t = {}".format(cp))
+        #plt.show()
+    #print(metrics.precision_score(labels, d))
+    
+    plt.figure(figsize=(12,4))
+    influences = pd.DataFrame(influences)
+    influences = influences[influences.columns[:-1]]
+    influences.columns = cfgs.columns
+    influences.plot()
+    plt.legend(loc=9, bbox_to_anchor=(0.5, -0.1), ncol=4)
     plt.show()
+    
+    #for i in timeslice[timeslice["variance"] > 0.23].values:
+    #  print(list(i))
+    #tree.plot_tree(clf)
+    #plt.show()
+    #plt.ylabel("$\sum$ variance")
+    #plt.xlabel("time [revisions]")
+    #
+    #plt.show()
