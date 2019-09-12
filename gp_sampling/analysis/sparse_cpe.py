@@ -282,15 +282,15 @@ def parseConfiurations(path_to_vm, path_to_configs):
                 configuration_vectors.append( fdict )
     return configuration_vectors
 
+
 if __name__ == "__main__":
     signal = pd.read_csv("/home/stefan/git/gp_sampling/resources/ground_truth/lrzip.csv")
     vm = "/home/stefan/git/gp_sampling/resources/ground_truth/lrzip.xml"
     cfgs = "/home/stefan/git/gp_sampling/resources/ground_truth/lrzip.config"
     cfgs = parseConfiurations(vm, cfgs)
-    
     cfgs = pd.DataFrame(cfgs)
-    cfgs = cfgs[['Encryption', 'LzoCompressibilityTesting', 'UnlimitedWindow','Compression', 'Bzip2', 'Gzip', 'Lzo', 'Zpaq']]
-    
+    cfgs = cfgs[cfgs.columns[[1]]]
+    #cfgs = cfgs[['crc32', 'crc64', 'sha256', 'none', 'hc3','hc4', 'bt2', 'bt3', 'bt4']]
     signal = signal[signal.columns[1:]]
     
     
@@ -304,7 +304,7 @@ if __name__ == "__main__":
     # make interpolations
     observation = np.full((cfgs.shape[0], signal.shape[0]), np.nan)
     
-    sampling_rate = 0.5
+    sampling_rate = 0.950
     #signalt = signal.T
     N = int(sampling_rate * signal.shape[0])
     for i in range(observation.shape[0]-1): # per config
@@ -334,31 +334,40 @@ if __name__ == "__main__":
     #varsum -= 0.5
     #varsum[varsum < 0] = 0  
     
-    n_components = 20
-    mmix = BayesianGaussianMixture(
-            n_components, 
-            n_init = 5,
-            tol = 1e-12,
-            #weight_concentration_prior_type = "dirichlet_distribution",
-            verbose = 1,
-            max_iter = 1000
-        )
+    plt.pcolormesh(interpolated, cmap="coolwarm")
+    plt.title("lrzip - performance (scaled per variant)")
+    plt.xlabel("time [commits]")
+    plt.ylabel("variant no. (unordered)")
+    plt.colorbar()
     
+    plt.show()#plt.savefig("performance.pdf", bbox_inches="tight")
     #plt.figure(figsize=(10,4))
-
+    
+    plt.clf()
+    
     varsum = pd.DataFrame(varsum).rolling(window=15, center=True).mean().values
     varsum[np.isnan(varsum)] = 0.0
     s = find_peaks(varsum.reshape(1, -1)[0])
 
     #print(variance.shape)
+    plt.title("lrzip - rolling stdev (W = {}, {} variants)".format(W, variance.shape[1]))
+    plt.xlabel("time [commits]")
+    plt.ylabel("variant no. (unordered)")
+    plt.pcolormesh(variance.T, cmap="bone_r")
+    plt.colorbar()
     
-    
+    plt.show()
     #plt.fill_between(np.arange(signal.shape[0]), np.zeros(signal.shape[0]), np.sum(variance, axis=1), alpha=0.5, color="darkgreen", label="variance across variants")
-    #plt.show()
-
+    plt.fill_between(np.arange(varsum.shape[0]), np.zeros(varsum.shape[0]), varsum.reshape(1, -1)[0], color="gray", alpha=0.5)
+    plt.plot(varsum, color="gray")
+    plt.title("lrzip - sum of variances per commit")
+    plt.ylabel("$\sum$ variance")
+    plt.xlabel("time [commits]")
+    
+    plt.show()
     influences = []
-
-    clf = linear.Ridge()
+    intercepts = []
+    clf = linear.BayesianRidge()
 
     for t in np.arange(signal.shape[0]-2):
         timeslice = new[new["time"] == t]
@@ -371,20 +380,32 @@ if __name__ == "__main__":
         clf.fit(configs, np.nan_to_num(vari))
         
         influences.append(list(clf.coef_))
-        
+        intercepts.append(clf.intercept_)
         #plt.bar(np.arange(len(clf.coef_)), clf.coef_)
         #plt.title("Coefficients at t = {}".format(cp))
         #plt.show()
     #print(metrics.precision_score(labels, d))
+    print(intercepts)
+    plt.figure(figsize=(7,4))
+    #plt.pcolormesh(variance.T)
+    #plt.colorbar()
+    #plt.show()
+    #print(new.loc[(new["time"] == 48) & (new["Zpaq"] == True)])
     
-    plt.figure(figsize=(12,4))
     influences = pd.DataFrame(influences)
     influences = influences[influences.columns[:-1]]
     influences.columns = cfgs.columns
-    influences.plot()
-    plt.legend(loc=9, bbox_to_anchor=(0.5, -0.1), ncol=4)
+    #sns.lineplot(data=influences, dashes=False)
+    sns.lineplot(data=influences, dashes=False, palette="muted")
+    plt.title("lrzip - decomposition into influences (Ridge)")
+    plt.xlabel("time [commits]")
+    plt.ylabel("coefficient value")
+    plt.legend(loc=9, bbox_to_anchor=(0.5, -0.15), ncol=4)
+    
     plt.show()
     
+    plt.plot(intercepts)
+    plt.show()
     #for i in timeslice[timeslice["variance"] > 0.23].values:
     #  print(list(i))
     #tree.plot_tree(clf)
